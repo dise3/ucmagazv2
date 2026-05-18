@@ -69,7 +69,7 @@ export const Navigation = ({ activeTab, onTabChange, isStoreMod }: NavigationPro
                 ) : (
                     <>
                         {/* Для обычного режима тоже уменьшили p-4 до p-3 */}
-                        <button onClick={() => openLink('https://t.me/+o4Y9CxHG2bMxOTYy')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
+                        <button onClick={() => openLink('https://t.me/rakuta_shop')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
                             <MessagesSquare size={24} strokeWidth={1.5} />
                         </button>
                         <button 
