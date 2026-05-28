@@ -35,15 +35,17 @@ if (data.startsWith('wdone_')) {
 }
 ```
 
-## Зачисление USDT дочернему (после конвертации ₽ на главном)
+## Зачисление рублей дочернему (доля партнёра, начисление и т.д.)
 
 ```typescript
 await axios.post(
     `${process.env.CHILD_STORE_API_URL}/api/treasury/credit`,
-    { amount: 150.5 },
+    { amount: 5000 },
     { headers: { 'x-treasury-secret': process.env.TREASURY_API_SECRET } }
 );
 ```
+
+`amount` — сумма в **рублях**.
 
 ## Схема
 
@@ -54,7 +56,7 @@ await axios.post(
          ↓
 [Главный webhook]  →  POST /api/treasury/withdrawal/complete
          ↓
-[Дочерний API]  →  списание USDT + уведомление админу дочернего бота
+[Дочерний API]  →  списание ₽ с баланса + уведомление в дочерний бот
 ```
 
 Конвертация ₽→USDT, учёт выручки по дням — только в главном проекте, в этот репозиторий не входят.

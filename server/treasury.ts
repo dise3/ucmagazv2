@@ -1,12 +1,15 @@
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-/** Токен бота главного магазина — сюда уходит заявка на вывод */
 export const MAIN_BOT_TOKEN = process.env.MAIN_BOT_TOKEN || '';
 export const MAIN_ADMIN_CHAT_ID = process.env.MAIN_ADMIN_CHAT_ID
     ? process.env.MAIN_ADMIN_CHAT_ID.split(',').map((id) => id.trim())
     : [];
 export const STORE_LABEL = process.env.STORE_LABEL || 'Дочерний магазин';
+
+export function formatRub(amount: number): string {
+    return `${amount.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}₽`;
+}
 
 async function ensureBalanceRow(supabase: SupabaseClient) {
     await supabase.from('shop_balance').upsert({ id: 1 }, { onConflict: 'id' });
@@ -37,57 +40,61 @@ export async function sendTelegramBot(
     }
 }
 
-export async function getUsdtBalances(supabase: SupabaseClient) {
+export async function getRubBalances(supabase: SupabaseClient) {
     await ensureBalanceRow(supabase);
-    const { data } = await supabase.from('shop_balance').select('balance_usdt, balance_usdt_reserved').eq('id', 1).single();
-    const total = Number(data?.balance_usdt ?? 0);
-    const reserved = Number(data?.balance_usdt_reserved ?? 0);
+    const { data } = await supabase
+        .from('shop_balance')
+        .select('balance_rub, balance_rub_reserved')
+        .eq('id', 1)
+        .single();
+    const total = Number(data?.balance_rub ?? 0);
+    const reserved = Number(data?.balance_rub_reserved ?? 0);
     return { total, reserved, available: Math.max(0, total - reserved) };
 }
 
-export function formatBalanceMessage(balances: Awaited<ReturnType<typeof getUsdtBalances>>): string {
+export function formatBalanceMessage(balances: Awaited<ReturnType<typeof getRubBalances>>): string {
     return (
-        `💰 <b>Баланс USDT</b>\n\n` +
-        `Доступно: <b>${balances.available.toFixed(2)}</b> USDT\n` +
-        `(в резерве заявок: ${balances.reserved.toFixed(2)} USDT)`
+        `💰 <b>Баланс</b>\n\n` +
+        `Доступно: <b>${formatRub(balances.available)}</b>\n` +
+        `(в резерве заявок: ${formatRub(balances.reserved)})`
     );
 }
 
-/** Зачисление USDT — вызывает главный магазин через API */
-export async function creditUsdt(supabase: SupabaseClient, amount: number) {
+/** Зачисление ₽ — вызывает главный магазин через API */
+export async function creditRub(supabase: SupabaseClient, amount: number) {
     if (amount <= 0) return { ok: false, error: 'Сумма должна быть > 0' };
     await ensureBalanceRow(supabase);
-    const { data } = await supabase.from('shop_balance').select('balance_usdt').eq('id', 1).single();
-    const next = Number(data?.balance_usdt ?? 0) + amount;
-    const { error } = await supabase.from('shop_balance').update({ balance_usdt: next }).eq('id', 1);
+    const { data } = await supabase.from('shop_balance').select('balance_rub').eq('id', 1).single();
+    const next = Number(data?.balance_rub ?? 0) + amount;
+    const { error } = await supabase.from('shop_balance').update({ balance_rub: next }).eq('id', 1);
     if (error) return { ok: false, error: error.message };
-    return { ok: true, balanceUsdt: next };
+    return { ok: true, balanceRub: next };
 }
 
 export async function createWithdrawalRequest(
     supabase: SupabaseClient,
     params: {
-        amountUsdt: number;
+        amountRub: number;
         platform: 'binance' | 'bybit';
         walletId: string;
         adminChatId: string;
     }
 ) {
-    const { available } = await getUsdtBalances(supabase);
-    if (params.amountUsdt <= 0) {
+    const { available } = await getRubBalances(supabase);
+    if (params.amountRub <= 0) {
         return { ok: false, error: 'Сумма должна быть больше 0' };
     }
-    if (params.amountUsdt > available) {
-        return { ok: false, error: `Недостаточно USDT. Доступно: ${available.toFixed(2)}` };
+    if (params.amountRub > available) {
+        return { ok: false, error: `Недостаточно средств. Доступно: ${formatRub(available)}` };
     }
 
     await ensureBalanceRow(supabase);
-    const { data: bal } = await supabase.from('shop_balance').select('balance_usdt_reserved').eq('id', 1).single();
-    const reserved = Number(bal?.balance_usdt_reserved ?? 0) + params.amountUsdt;
+    const { data: bal } = await supabase.from('shop_balance').select('balance_rub_reserved').eq('id', 1).single();
+    const reserved = Number(bal?.balance_rub_reserved ?? 0) + params.amountRub;
 
     const { error: reserveErr } = await supabase
         .from('shop_balance')
-        .update({ balance_usdt_reserved: reserved })
+        .update({ balance_rub_reserved: reserved })
         .eq('id', 1);
     if (reserveErr) return { ok: false, error: reserveErr.message };
 
@@ -95,7 +102,7 @@ export async function createWithdrawalRequest(
         .from('withdrawal_requests')
         .insert({
             store_label: STORE_LABEL,
-            amount_usdt: params.amountUsdt,
+            amount_rub: params.amountRub,
             platform: params.platform,
             wallet_id: params.walletId,
             status: 'pending',
@@ -105,7 +112,10 @@ export async function createWithdrawalRequest(
         .single();
 
     if (error || !req) {
-        await supabase.from('shop_balance').update({ balance_usdt_reserved: reserved - params.amountUsdt }).eq('id', 1);
+        await supabase
+            .from('shop_balance')
+            .update({ balance_rub_reserved: reserved - params.amountRub })
+            .eq('id', 1);
         return { ok: false, error: error?.message || 'Не удалось создать заявку' };
     }
 
@@ -113,11 +123,10 @@ export async function createWithdrawalRequest(
     const adminText =
         `📤 <b>Заявка на вывод #${req.id}</b>\n\n` +
         `🏪 <b>${STORE_LABEL}</b>\n` +
-        `💎 Сумма: <b>${params.amountUsdt.toFixed(2)} USDT</b>\n` +
+        `💵 Сумма: <b>${formatRub(params.amountRub)}</b>\n` +
         `📱 Площадка: <b>${platformLabel}</b>\n` +
         `🆔 ID: <code>${params.walletId}</code>`;
 
-    // Кнопку обрабатывает webhook главного бота (другой проект), затем — POST сюда /api/treasury/withdrawal/complete
     const keyboard = {
         inline_keyboard: [[{ text: '✅ Выполнено', callback_data: `wdone_${req.id}` }]],
     };
@@ -135,22 +144,25 @@ export async function createWithdrawalRequest(
     return { ok: true, request: req };
 }
 
-/** Завершение вывода — вызывается главным проектом после нажатия «Выполнено» */
 export async function completeWithdrawal(supabase: SupabaseClient, requestId: number, botToken: string) {
     const { data: req } = await supabase.from('withdrawal_requests').select('*').eq('id', requestId).single();
 
     if (!req) return { ok: false, error: 'Заявка не найдена' };
     if (req.status === 'completed') return { ok: false, error: 'Уже выполнена' };
 
-    const amount = Number(req.amount_usdt);
+    const amount = Number(req.amount_rub);
 
     await ensureBalanceRow(supabase);
-    const { data: bal } = await supabase.from('shop_balance').select('balance_usdt, balance_usdt_reserved').eq('id', 1).single();
+    const { data: bal } = await supabase
+        .from('shop_balance')
+        .select('balance_rub, balance_rub_reserved')
+        .eq('id', 1)
+        .single();
 
-    const balance = Number(bal?.balance_usdt ?? 0);
-    const reserved = Number(bal?.balance_usdt_reserved ?? 0);
+    const balance = Number(bal?.balance_rub ?? 0);
+    const reserved = Number(bal?.balance_rub_reserved ?? 0);
     if (balance < amount) {
-        return { ok: false, error: 'Недостаточно USDT на балансе' };
+        return { ok: false, error: 'Недостаточно рублей на балансе' };
     }
 
     const { error: updErr } = await supabase
@@ -162,8 +174,8 @@ export async function completeWithdrawal(supabase: SupabaseClient, requestId: nu
     await supabase
         .from('shop_balance')
         .update({
-            balance_usdt: balance - amount,
-            balance_usdt_reserved: Math.max(0, reserved - amount),
+            balance_rub: balance - amount,
+            balance_rub_reserved: Math.max(0, reserved - amount),
         })
         .eq('id', 1);
 
@@ -173,7 +185,7 @@ export async function completeWithdrawal(supabase: SupabaseClient, requestId: nu
         req.admin_chat_id,
         `✅ <b>Вывод выполнен</b>\n\n` +
             `Заявка #${requestId}\n` +
-            `💎 ${amount.toFixed(2)} USDT → ${platformLabel}\n` +
+            `💵 ${formatRub(amount)} → ${platformLabel}\n` +
             `🆔 <code>${req.wallet_id}</code>`
     );
 

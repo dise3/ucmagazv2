@@ -9,11 +9,12 @@ import FormData from 'form-data';
 import cors from 'cors';
 import { fulfillOrder } from './bot_manager.ts';
 import {
-    getUsdtBalances,
+    getRubBalances,
     formatBalanceMessage,
+    formatRub,
     createWithdrawalRequest,
     completeWithdrawal,
-    creditUsdt,
+    creditRub,
 } from './treasury.ts';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
@@ -843,7 +844,7 @@ app.post('/api/treasury/credit', async (req, res) => {
         return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
     const amount = Number(req.body?.amount);
-    const result = await creditUsdt(supabase, amount);
+    const result = await creditRub(supabase, amount);
     res.status(result.ok ? 200 : 400).json(result);
 });
 
@@ -1098,11 +1099,11 @@ app.post('/api/bot-webhook', async (req, res) => {
                 if (state.action === 'await_withdraw_amount') {
                     const amount = parseFloat(text.trim().replace(',', '.'));
                     if (isNaN(amount) || amount <= 0) {
-                        await sendTg(chatId, '❌ Введите сумму вывода в USDT');
+                        await sendTg(chatId, '❌ Введите сумму вывода в рублях');
                         return;
                     }
                     adminStates.set(chatId, { action: 'await_withdraw_platform', withdrawAmount: amount });
-                    await sendTg(chatId, `Выберите площадку для вывода <b>${amount.toFixed(2)} USDT</b>:`, {
+                    await sendTg(chatId, `Выберите площадку для вывода <b>${formatRub(amount)}</b>:`, {
                         inline_keyboard: [
                             [
                                 { text: 'Binance', callback_data: 'wdraw_binance' },
@@ -1120,7 +1121,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                         return;
                     }
                     const result = await createWithdrawalRequest(supabase, {
-                        amountUsdt: state.withdrawAmount!,
+                        amountRub: state.withdrawAmount!,
                         platform: state.withdrawPlatform!,
                         walletId,
                         adminChatId: chatId,
@@ -1132,7 +1133,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                         await sendTg(
                             chatId,
                             `✅ <b>Заявка #${result.request!.id} отправлена</b>\n\n` +
-                                `Сумма: ${state.withdrawAmount!.toFixed(2)} USDT\n` +
+                                `Сумма: ${formatRub(state.withdrawAmount!)}\n` +
                                 `Ожидайте подтверждения.`,
                             getAdminMainKeyboard()
                         );
@@ -2018,12 +2019,12 @@ if (message && message.photo) {
         }
 
         if (data === 'money') {
-            const balances = await getUsdtBalances(supabase);
+            const balances = await getRubBalances(supabase);
             adminStates.set(currentChatId, { action: 'await_withdraw_amount' });
             await editTg(
                 currentChatId,
                 msgId,
-                formatBalanceMessage(balances) + '\n\n💸 Введите сумму вывода в USDT:',
+                formatBalanceMessage(balances) + '\n\n💸 Введите сумму вывода в рублях:',
                 { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
             );
         }
