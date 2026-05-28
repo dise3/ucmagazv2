@@ -8,6 +8,13 @@ import axios from 'axios';
 import FormData from 'form-data';
 import cors from 'cors';
 import { fulfillOrder } from './bot_manager.ts';
+import {
+    getUsdtBalances,
+    formatBalanceMessage,
+    createWithdrawalRequest,
+    completeWithdrawal,
+    creditUsdt,
+} from './treasury.ts';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -37,6 +44,10 @@ console.log('process.env.ADMIN_CHAT_ID:', process.env.ADMIN_CHAT_ID);
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID ? process.env.ADMIN_CHAT_ID.split(',').map(id => id.trim()) : [];
 console.log('ADMIN_CHAT_ID loaded:', ADMIN_CHAT_ID);
 const BACKEND_URL = process.env.BACKEND_URL;
+const TREASURY_API_SECRET = process.env.TREASURY_API_SECRET || '';
+
+const checkTreasurySecret = (req: express.Request) =>
+    TREASURY_API_SECRET && req.headers['x-treasury-secret'] === TREASURY_API_SECRET;
 
 const automationTimers = new Map<number, NodeJS.Timeout>();
 
@@ -47,6 +58,8 @@ type AdminState = {
     title?: string;
     price?: number;
     message?: string;
+    withdrawAmount?: number;
+    withdrawPlatform?: 'binance' | 'bybit';
 };
 const adminStates = new Map<string, AdminState>();
 
@@ -409,8 +422,8 @@ const getAdminMainKeyboard = () => ({
         [{ text: "🎮 Prime", callback_data: "adm_prime" }, { text: "💵 Базовые номиналы UC", callback_data: "adm_price_usd" }],
         [{ text: "📊 Наценки /list", callback_data: "adm_list" }, { text: "🛒 Управление товарами", callback_data: "admin_manage" }],
         [{ text: "📢 Рассылки", callback_data: "adm_broadcasts" }, { text: "💵 Прибыль", callback_data: "adm_profit" }],
-        [{ text: "🔄 Активировать аккаунты", callback_data: "adm_activate_accounts" }]
-    ]
+        [{ text: "🔄 Активировать аккаунты", callback_data: "adm_activate_accounts" }, { text: "💸 Вывести средства", callback_data: "money" }],
+    ],
 });
 
 // Функция для отправки рассылки
@@ -812,6 +825,28 @@ app.post('/api/payment-callback', async (req, res) => {
     }
 });
 
+// API для главного магазина (другой проект)
+app.post('/api/treasury/withdrawal/complete', async (req, res) => {
+    if (!checkTreasurySecret(req)) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const requestId = parseInt(req.body?.requestId, 10);
+    if (!requestId) {
+        return res.status(400).json({ ok: false, error: 'requestId required' });
+    }
+    const result = await completeWithdrawal(supabase, requestId, BOT_TOKEN!);
+    res.status(result.ok ? 200 : 400).json(result);
+});
+
+app.post('/api/treasury/credit', async (req, res) => {
+    if (!checkTreasurySecret(req)) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const amount = Number(req.body?.amount);
+    const result = await creditUsdt(supabase, amount);
+    res.status(result.ok ? 200 : 400).json(result);
+});
+
 // 7. Получение настроек
 app.get('/api/settings', async (req, res) => {
     try {
@@ -1060,6 +1095,50 @@ app.post('/api/bot-webhook', async (req, res) => {
                     }
                     return;
                 }
+                if (state.action === 'await_withdraw_amount') {
+                    const amount = parseFloat(text.trim().replace(',', '.'));
+                    if (isNaN(amount) || amount <= 0) {
+                        await sendTg(chatId, '❌ Введите сумму вывода в USDT');
+                        return;
+                    }
+                    adminStates.set(chatId, { action: 'await_withdraw_platform', withdrawAmount: amount });
+                    await sendTg(chatId, `Выберите площадку для вывода <b>${amount.toFixed(2)} USDT</b>:`, {
+                        inline_keyboard: [
+                            [
+                                { text: 'Binance', callback_data: 'wdraw_binance' },
+                                { text: 'Bybit', callback_data: 'wdraw_bybit' },
+                            ],
+                            [{ text: '❌ Отмена', callback_data: 'adm_back' }],
+                        ],
+                    });
+                    return;
+                }
+                if (state.action === 'await_withdraw_wallet') {
+                    const walletId = text.trim();
+                    if (!walletId) {
+                        await sendTg(chatId, '❌ Введите ID получателя');
+                        return;
+                    }
+                    const result = await createWithdrawalRequest(supabase, {
+                        amountUsdt: state.withdrawAmount!,
+                        platform: state.withdrawPlatform!,
+                        walletId,
+                        adminChatId: chatId,
+                    });
+                    adminStates.delete(chatId);
+                    if (!result.ok) {
+                        await sendTg(chatId, `❌ ${result.error}`, getAdminMainKeyboard());
+                    } else {
+                        await sendTg(
+                            chatId,
+                            `✅ <b>Заявка #${result.request!.id} отправлена</b>\n\n` +
+                                `Сумма: ${state.withdrawAmount!.toFixed(2)} USDT\n` +
+                                `Ожидайте подтверждения.`,
+                            getAdminMainKeyboard()
+                        );
+                    }
+                    return;
+                }
             }
 
             // Обработка команд для админа (текстовые команды сохранены для совместимости)
@@ -1078,7 +1157,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                 
                 const keyboard = {
                     inline_keyboard: [[
-                        { text: "Открыть магазин", icon_custom_emoji_id: "5242557396416500126", style: "danger", web_app: { url: `${process.env.CLIENT_URL || 'https://ucmagaz.web.app'}` } }
+                        { text: "Открыть магазин", icon_custom_emoji_id: "5242557396416500126", style: "danger", web_app: { url: `${process.env.CLIENT_URL || 'https://rakutapubgtop-up.store'}` } }
                     ], [
                         { text: "🔧 Админ панель", callback_data: "admin_panel" }
                     ]]
@@ -1937,6 +2016,35 @@ if (message && message.photo) {
             const text = error ? `❌ Ошибка активации: ${error.message}` : `✅ Все аккаунты Midasbuy активированы!`;
             await answerCallback(callback_query.id, text);
         }
+
+        if (data === 'money') {
+            const balances = await getUsdtBalances(supabase);
+            adminStates.set(currentChatId, { action: 'await_withdraw_amount' });
+            await editTg(
+                currentChatId,
+                msgId,
+                formatBalanceMessage(balances) + '\n\n💸 Введите сумму вывода в USDT:',
+                { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
+            );
+        }
+
+        if (data === 'wdraw_binance' || data === 'wdraw_bybit') {
+            const state = adminStates.get(currentChatId);
+            if (state?.action === 'await_withdraw_platform' && state.withdrawAmount) {
+                const platform = data === 'wdraw_binance' ? 'binance' : 'bybit';
+                adminStates.set(currentChatId, {
+                    action: 'await_withdraw_wallet',
+                    withdrawAmount: state.withdrawAmount,
+                    withdrawPlatform: platform,
+                });
+                const label = platform === 'binance' ? 'Binance' : 'Bybit';
+                await editTg(currentChatId, msgId, `🆔 Введите ID <b>${label}</b> для вывода:`, {
+                    inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]],
+                });
+                await answerCallback(callback_query.id, label);
+            }
+        }
+
     }
 });
 
