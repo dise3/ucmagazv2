@@ -9,13 +9,14 @@ import FormData from 'form-data';
 import cors from 'cors';
 import { fulfillOrder } from './bot_manager.ts';
 import {
-    getRubBalances,
-    formatBalanceMessage,
-    formatRub,
+    recordChildOrderRevenue,
+    getChildTreasurySummary,
+    convertChildRubToUsdt,
     createWithdrawalRequest,
-    completeWithdrawal,
-    creditRub,
-} from './treasury.ts';
+    completeWithdrawalRequest,
+    formatChildTreasuryMessage,
+    formatUsdt,
+} from './treasury_child.ts';
 import { getLeaderboard } from './leaderboard.ts';
 import { startNightBroadcastSchedule, getNightBroadcastMessage } from './scheduled_broadcast.ts';
 import { createClient } from '@supabase/supabase-js';
@@ -49,8 +50,12 @@ console.log('ADMIN_CHAT_ID loaded:', ADMIN_CHAT_ID);
 const BACKEND_URL = process.env.BACKEND_URL;
 const TREASURY_API_SECRET = process.env.TREASURY_API_SECRET || '';
 
-const checkTreasurySecret = (req: express.Request) =>
-    TREASURY_API_SECRET && req.headers['x-treasury-secret'] === TREASURY_API_SECRET;
+function treasuryAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+    if (req.headers['x-treasury-secret'] !== TREASURY_API_SECRET) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+    }
+    next();
+}
 
 const automationTimers = new Map<number, NodeJS.Timeout>();
 
@@ -62,7 +67,6 @@ type AdminState = {
     price?: number;
     message?: string;
     withdrawAmount?: number;
-    withdrawPlatform?: 'binance' | 'bybit';
 };
 const adminStates = new Map<string, AdminState>();
 
@@ -833,6 +837,17 @@ app.post('/api/payment-callback', async (req, res) => {
 
             if (!order) return res.status(404).send('Not Found');
 
+            try {
+                await recordChildOrderRevenue(
+                    supabase,
+                    order.id,
+                    Number(order.price_rub) || 0,
+                    order.created_at
+                );
+            } catch (e) {
+                console.error('[treasury_child] recordChildOrderRevenue', e);
+            }
+
             if (order.order_type === 'login') {
                 const username = await getDisplayName(order);
                 const adminMsg =
@@ -938,25 +953,34 @@ app.get('/api/leaderboard', async (_req, res) => {
     }
 });
 
-// API для главного магазина (другой проект)
-app.post('/api/treasury/withdrawal/complete', async (req, res) => {
-    if (!checkTreasurySecret(req)) {
-        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+// API казначейства — вызывает главный магазин (x-treasury-secret)
+app.get('/api/treasury/summary', treasuryAuth, async (_req, res) => {
+    try {
+        const s = await getChildTreasurySummary(supabase);
+        res.json(s);
+    } catch (e: any) {
+        console.error('[treasury] summary', e);
+        res.status(500).json({ ok: false, error: e.message });
     }
-    const requestId = parseInt(req.body?.requestId, 10);
+});
+
+app.post('/api/treasury/convert', treasuryAuth, async (req, res) => {
+    try {
+        const rate = Number(req.body?.rate);
+        const result = await convertChildRubToUsdt(supabase, rate);
+        res.status(result.ok ? 200 : 400).json(result);
+    } catch (e: any) {
+        console.error('[treasury] convert', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/treasury/withdrawal/complete', treasuryAuth, async (req, res) => {
+    const requestId = Number(req.body?.requestId);
     if (!requestId) {
         return res.status(400).json({ ok: false, error: 'requestId required' });
     }
-    const result = await completeWithdrawal(supabase, requestId, BOT_TOKEN!);
-    res.status(result.ok ? 200 : 400).json(result);
-});
-
-app.post('/api/treasury/credit', async (req, res) => {
-    if (!checkTreasurySecret(req)) {
-        return res.status(401).json({ ok: false, error: 'Unauthorized' });
-    }
-    const amount = Number(req.body?.amount);
-    const result = await creditRub(supabase, amount);
+    const result = await completeWithdrawalRequest(supabase, requestId, BOT_TOKEN!);
     res.status(result.ok ? 200 : 400).json(result);
 });
 
@@ -1211,31 +1235,27 @@ app.post('/api/bot-webhook', async (req, res) => {
                 if (state.action === 'await_withdraw_amount') {
                     const amount = parseFloat(text.trim().replace(',', '.'));
                     if (isNaN(amount) || amount <= 0) {
-                        await sendTg(chatId, '❌ Введите сумму вывода в рублях');
+                        await sendTg(chatId, '❌ Введите сумму вывода в USDT');
                         return;
                     }
-                    adminStates.set(chatId, { action: 'await_withdraw_platform', withdrawAmount: amount });
-                    await sendTg(chatId, `Выберите площадку для вывода <b>${formatRub(amount)}</b>:`, {
-                        inline_keyboard: [
-                            [
-                                { text: 'Binance', callback_data: 'wdraw_binance' },
-                                { text: 'Bybit', callback_data: 'wdraw_bybit' },
-                            ],
-                            [{ text: '❌ Отмена', callback_data: 'adm_back' }],
-                        ],
-                    });
+                    adminStates.set(chatId, { action: 'await_withdraw_payout', withdrawAmount: amount });
+                    await sendTg(
+                        chatId,
+                        `Введите реквизиты для вывода <b>${formatUsdt(amount)}</b>\n` +
+                            `(например: Binance UID 123456789):`,
+                        { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
+                    );
                     return;
                 }
-                if (state.action === 'await_withdraw_wallet') {
-                    const walletId = text.trim();
-                    if (!walletId) {
-                        await sendTg(chatId, '❌ Введите ID получателя');
+                if (state.action === 'await_withdraw_payout') {
+                    const payoutDetails = text.trim();
+                    if (!payoutDetails) {
+                        await sendTg(chatId, '❌ Введите реквизиты (Binance UID и т.д.)');
                         return;
                     }
                     const result = await createWithdrawalRequest(supabase, {
-                        amountRub: state.withdrawAmount!,
-                        platform: state.withdrawPlatform!,
-                        walletId,
+                        amountUsdt: state.withdrawAmount!,
+                        payoutDetails,
                         adminChatId: chatId,
                     });
                     adminStates.delete(chatId);
@@ -1245,8 +1265,8 @@ app.post('/api/bot-webhook', async (req, res) => {
                         await sendTg(
                             chatId,
                             `✅ <b>Заявка #${result.request!.id} отправлена</b>\n\n` +
-                                `Сумма: ${formatRub(state.withdrawAmount!)}\n` +
-                                `Ожидайте подтверждения.`,
+                                `Сумма: ${formatUsdt(state.withdrawAmount!)}\n` +
+                                `Ожидайте подтверждения в главном боте.`,
                             getAdminMainKeyboard()
                         );
                     }
@@ -2133,31 +2153,14 @@ if (message && message.photo) {
         }
 
         if (data === 'money') {
-            const balances = await getRubBalances(supabase);
+            const summary = await getChildTreasurySummary(supabase);
             adminStates.set(currentChatId, { action: 'await_withdraw_amount' });
             await editTg(
                 currentChatId,
                 msgId,
-                formatBalanceMessage(balances) + '\n\n💸 Введите сумму вывода в рублях:',
+                formatChildTreasuryMessage(summary) + '\n\n💸 Введите сумму вывода в USDT:',
                 { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
             );
-        }
-
-        if (data === 'wdraw_binance' || data === 'wdraw_bybit') {
-            const state = adminStates.get(currentChatId);
-            if (state?.action === 'await_withdraw_platform' && state.withdrawAmount) {
-                const platform = data === 'wdraw_binance' ? 'binance' : 'bybit';
-                adminStates.set(currentChatId, {
-                    action: 'await_withdraw_wallet',
-                    withdrawAmount: state.withdrawAmount,
-                    withdrawPlatform: platform,
-                });
-                const label = platform === 'binance' ? 'Binance' : 'Bybit';
-                await editTg(currentChatId, msgId, `🆔 Введите ID <b>${label}</b> для вывода:`, {
-                    inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]],
-                });
-                await answerCallback(callback_query.id, label);
-            }
         }
 
     }
