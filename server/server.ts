@@ -17,6 +17,7 @@ import {
     creditRub,
 } from './treasury.ts';
 import { getLeaderboard } from './leaderboard.ts';
+import { startNightBroadcastSchedule, getNightBroadcastMessage } from './scheduled_broadcast.ts';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -428,46 +429,80 @@ const getAdminMainKeyboard = () => ({
     ],
 });
 
-// Функция для отправки рассылки
-async function sendBroadcast(adminChatId: string, message: string, photoId: string | null) {
-    // Получаем всех активных пользователей для рассылки
+// Функция для отправки рассылки (adminChatId = null — без уведомления админу, для cron)
+async function sendBroadcast(
+    adminChatId: string | null,
+    message: string,
+    photoId: string | null
+): Promise<{ sent: number; total: number }> {
     const { data: allUsers } = await supabase
         .from('broadcast_users')
         .select('chat_id')
         .eq('is_active', true);
-    
-    const users = allUsers?.map(user => user.chat_id) || [];
-    
+
+    const users = allUsers?.map((user) => user.chat_id) || [];
+
     if (users.length === 0) {
-        await sendTg(adminChatId, '❌ Нет пользователей для рассылки', getAdminMainKeyboard());
-        return;
+        if (adminChatId) {
+            await sendTg(adminChatId, '❌ Нет пользователей для рассылки', getAdminMainKeyboard());
+        }
+        console.log('[Рассылка] Нет активных пользователей');
+        return { sent: 0, total: 0 };
     }
-    
-    await sendTg(adminChatId, `🚀 <b>Рассылка запущена!</b>\n\n📊 Отправка ${users.length} пользователям\n⏳ Это может занять время...`, getAdminMainKeyboard());
-    
-    // Отправляем сообщения всем пользователям
+
+    if (adminChatId) {
+        await sendTg(
+            adminChatId,
+            `🚀 <b>Рассылка запущена!</b>\n\n📊 Отправка ${users.length} пользователям\n⏳ Это может занять время...`,
+            getAdminMainKeyboard()
+        );
+    }
+
+    let sent = 0;
     for (let i = 0; i < users.length; i++) {
         const chatId = users[i];
         try {
             if (photoId) {
-                // Отправляем фото с подписью
                 await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
                     chat_id: chatId,
                     photo: photoId,
-                    caption: message
+                    caption: message,
                 });
             } else {
                 await sendTg(chatId, message);
             }
+            sent++;
             console.log(`[Рассылка] Отправлено ${i + 1}/${users.length} (${chatId})`);
-            
-            // Задержка чтобы не заблокировали
+
             if (i < users.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
             }
         } catch (error) {
             console.error(`[Рассылка] Ошибка отправки ${chatId}:`, error);
         }
+    }
+
+    if (adminChatId) {
+        await sendTg(
+            adminChatId,
+            `✅ <b>Рассылка завершена</b>\n\n📬 Доставлено: ${sent} из ${users.length}`,
+            getAdminMainKeyboard()
+        );
+    }
+
+    return { sent, total: users.length };
+}
+
+async function runNightBroadcast() {
+    const message = getNightBroadcastMessage();
+    const { sent, total } = await sendBroadcast(null, message, null);
+    console.log(`[cron] Ночная рассылка: ${sent}/${total}`);
+    const adminId = ADMIN_CHAT_ID[0];
+    if (adminId && total > 0) {
+        await sendTg(
+            adminId,
+            `📢 <b>Авторассылка 02:30</b>\n\n${message}\n\n📬 ${sent} из ${total}`
+        );
     }
 }
 
@@ -492,6 +527,21 @@ async function addBroadcastUser(chatId: string | number, username?: string, firs
 // --- API РОУТЫ ---
 
 app.get('/', (req, res) => res.send('✅ Server is running'));
+
+// Cron: ночная рассылка (можно вызвать внешним cron вместо node-cron)
+app.post('/api/cron/night-broadcast', async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers['x-cron-secret'] !== secret) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+        await runNightBroadcast();
+        res.json({ ok: true });
+    } catch (e: any) {
+        console.error('[cron] night-broadcast API:', e);
+        res.status(500).json({ error: e.message || 'Internal Error' });
+    }
+});
 
 // API эндпоинт для cron активации аккаунтов
 app.post('/api/activate-accounts', async (req, res) => {
@@ -2115,4 +2165,5 @@ if (message && message.photo) {
 
 app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
+    startNightBroadcastSchedule(runNightBroadcast);
 });

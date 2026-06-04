@@ -51,7 +51,7 @@ function App() {
                 <Store onBack={handleBackToHome} onSelect={handlePackSelect} />
               )}
               {page === "promo" && (
-                <PromoStore onBack={handleBackToHome} onSelect={handlePackSelect} />
+                <PromoStore onBack={handleBackToHome} />
               )}
               {page === "prime" && (
                 <Prime onBack={handleBackToHome} onSelect={handlePackSelect} />
@@ -62,7 +62,7 @@ function App() {
               {page === "checkout" && (
                 <Checkout
                   pack={selectedPack}
-                  onBack={() => setPage(selectedPack?.type === 'login' ? 'promo' : 'store')}
+                  onBack={() => setPage('store')}
                 />
               )}
             </>

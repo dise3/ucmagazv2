@@ -1,64 +1,75 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
+const LOGIN_UC_AMOUNTS = [1800, 3850, 5650, 8100, 16200, 32400, 40500, 81000] as const;
+const MANAGER_USERNAME = 'RAKUTAMANAGER';
+const DEFAULT_IMAGE = '/uc-325.jpg';
+
 interface Pack {
-    id: number;
     amount: number;
-    price: number;
-    basePrice: number;
+    price: number | null;
     image: string;
-    type: 'login';
 }
 
 interface PromoStoreProps {
     onBack: () => void;
-    onSelect: (pack: Pack) => void;
 }
 
-const PromoStore: React.FC<PromoStoreProps> = ({ onBack, onSelect }) => {
+function buildManagerMessage(amount: number): string {
+    const qty = amount.toLocaleString('ru-RU');
+    return `Привет, хочу купить «${qty}» UC по входу\n\n«Жду реквизиты для оплаты»`;
+}
+
+function openManagerChat(amount: number) {
+    const url = `https://t.me/${MANAGER_USERNAME}?text=${encodeURIComponent(buildManagerMessage(amount))}`;
+    const tg = window.Telegram?.WebApp;
+    if (tg?.openTelegramLink) {
+        tg.openTelegramLink(url);
+    } else {
+        window.open(url, '_blank');
+    }
+}
+
+const PromoStore: React.FC<PromoStoreProps> = ({ onBack }) => {
     const [packs, setPacks] = useState<Pack[]>([]);
     const [loading, setLoading] = useState(true);
     const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
-    const paymentMethod: 'sbp' | 'card' = 'sbp';
-    const COMMISSION_SBP = 0.0485;
-
-    const calculatePriceWithCommission = (base: number) => Math.ceil(base * (1 + COMMISSION_SBP));
 
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                const [productsRes, settingsRes] = await Promise.all([
-                    fetch(`${VITE_API_NGROK}/api/products?store=store`, {
-                        headers: {
-                            'ngrok-skip-browser-warning': 'true',
-                            Accept: 'application/json',
-                        },
-                    }),
-                    fetch(`${VITE_API_NGROK}/api/settings`, {
-                        headers: { 'ngrok-skip-browser-warning': 'true', Accept: 'application/json' },
-                    }),
-                ]);
-
-                const data = await productsRes.json();
-                const settings = await settingsRes.json();
-
-                const formattedPacks = data
-                    .filter((p: { amount_uc: number }) => p.amount_uc >= 445)
-                    .map((p: { id: number; amount_uc: number; price: number; image_url: string }) => {
-                        const base = Number(p.price || 0) * (1 + (settings?.fee_percent || 0));
-                        return {
-                            id: p.id,
-                            amount: p.amount_uc,
-                            basePrice: base,
-                            price: calculatePriceWithCommission(base),
-                            image: p.image_url,
-                            type: 'login' as const,
-                        };
+                const response = await fetch(`${VITE_API_NGROK}/api/products?store=store`, {
+                    headers: {
+                        'ngrok-skip-browser-warning': 'true',
+                        Accept: 'application/json',
+                    },
+                });
+                const data = await response.json();
+                const byAmount = new Map<number, { price: number; image_url: string }>();
+                if (Array.isArray(data)) {
+                    data.forEach((p: { amount_uc: number; price: number; image_url: string }) => {
+                        byAmount.set(p.amount_uc, { price: Number(p.price), image_url: p.image_url });
                     });
+                }
 
-                setPacks(formattedPacks);
+                const list: Pack[] = LOGIN_UC_AMOUNTS.map((amount) => {
+                    const fromApi = byAmount.get(amount);
+                    return {
+                        amount,
+                        price: fromApi?.price ?? null,
+                        image: fromApi?.image_url || DEFAULT_IMAGE,
+                    };
+                });
+                setPacks(list);
             } catch (error) {
                 console.error('Ошибка при загрузке товаров:', error);
+                setPacks(
+                    LOGIN_UC_AMOUNTS.map((amount) => ({
+                        amount,
+                        price: null,
+                        image: DEFAULT_IMAGE,
+                    }))
+                );
             } finally {
                 setLoading(false);
             }
@@ -66,6 +77,11 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack, onSelect }) => {
 
         fetchProducts();
     }, [VITE_API_NGROK]);
+
+    const handleSelect = (amount: number) => {
+        window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('medium');
+        openManagerChat(amount);
+    };
 
     if (loading) {
         return (
@@ -102,18 +118,16 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack, onSelect }) => {
                     <h2 className="text-xl font-black text-white tracking-tight italic uppercase">UC по входу</h2>
                 </div>
                 <p className="relative z-10 text-[13px] text-white/60 leading-relaxed font-medium">
-                    Для пополнения необходим доступ к <span className="text-amber-400 font-bold">аккаунту</span> и ваш <span className="text-amber-400 font-bold">игровой никнейм</span>,{' '}
+                    Выберите номинал — откроется чат с{' '}
+                    <span className="text-amber-400 font-bold">@{MANAGER_USERNAME}</span> с готовым сообщением
                 </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 px-2">
                 {packs.map((pack) => (
                     <div
-                        key={pack.id}
-                        onClick={() => {
-                            window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('medium');
-                            onSelect(pack);
-                        }}
+                        key={pack.amount}
+                        onClick={() => handleSelect(pack.amount)}
                         className="relative bg-[#121212]/60 border border-white/10 rounded-[28px] p-3 flex flex-col items-center gap-3 active:scale-95 transition-all cursor-pointer group overflow-hidden"
                     >
                         <div className="relative w-full aspect-square rounded-[20px] overflow-hidden">
@@ -129,8 +143,10 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack, onSelect }) => {
                                 <div className="absolute inset-0 bg-[#d4af37] blur-lg opacity-10" />
                                 <div className="relative p-[1.5px] bg-gradient-to-tr from-[#8a6d3b] via-[#e2c17d] to-[#8a6d3b] rounded-2xl">
                                     <div className="relative bg-[#0f0f0f] py-2.5 rounded-[14px] flex items-center justify-center overflow-hidden">
-                                        <span className="relative z-10 bg-gradient-to-b from-[#f3d092] via-[#d4af37] to-[#8a6d3b] bg-clip-text text-transparent font-black text-[15px] uppercase tracking-wider">
-                                            {pack.price.toLocaleString('ru-RU')} ₽
+                                        <span className="relative z-10 bg-gradient-to-b from-[#f3d092] via-[#d4af37] to-[#8a6d3b] bg-clip-text text-transparent font-black text-[13px] uppercase tracking-wider">
+                                            {pack.price != null
+                                                ? `${Math.ceil(pack.price).toLocaleString('ru-RU')} ₽`
+                                                : 'Написать'}
                                         </span>
                                     </div>
                                 </div>
