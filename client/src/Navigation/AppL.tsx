@@ -1,4 +1,4 @@
-import { Home, MessagesSquare, Headset } from 'lucide-react';
+import { Home, MessagesSquare, Headset, Scroll } from 'lucide-react';
 
 interface NavigationProps {
     activeTab: string;
@@ -83,7 +83,7 @@ export const Navigation = ({ activeTab, onTabChange, isStoreMod }: NavigationPro
                             <Headset size={24} strokeWidth={1.5} />
                         </button>
                             <button onClick={() => openLink('https://t.me/rakuta_shop')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
-                            <Headset size={24} strokeWidth={1.5} />
+                            <Scroll size={24} strokeWidth={1.5} />
                         </button>
                     </>
                 )}
