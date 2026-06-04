@@ -102,9 +102,7 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack, onSelect }) => {
                     <h2 className="text-xl font-black text-white tracking-tight italic uppercase">UC по входу</h2>
                 </div>
                 <p className="relative z-10 text-[13px] text-white/60 leading-relaxed font-medium">
-                    При оплате укажите <span className="text-amber-400 font-bold">логин</span>,{' '}
-                    <span className="text-amber-400 font-bold">пароль</span> и{' '}
-                    <span className="text-amber-400 font-bold">игровой никнейм</span>
+                    Для пополнения необходим доступ к <span className="text-amber-400 font-bold">аккаунту</span> и ваш <span className="text-amber-400 font-bold">игровой никнейм</span>,{' '}
                 </p>
             </div>
 
