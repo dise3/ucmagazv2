@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft, Info, ChevronDown } from 'lucide-react';
+import IosSwitch from '../components/IosSwitch';
 
 interface Pack {
   id: number | string;
@@ -24,6 +25,7 @@ const Store: React.FC<StoreProps> = ({ onBack, onSelect }) => {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null); // Состояние для выплывающего списка
   const [selectedPeriods, setSelectedPeriods] = useState<{ [key: string]: { months: number; price: number } }>({});
+  const [deliverAsCode, setDeliverAsCode] = useState<Record<string, boolean>>({});
   const paymentMethod: 'sbp' | 'card' = 'sbp';
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
 
@@ -191,12 +193,13 @@ const Store: React.FC<StoreProps> = ({ onBack, onSelect }) => {
                 return;
               }
               window.Telegram?.WebApp?.HapticFeedback.impactOccurred('medium');
+              const isUc = pack.type === 'uc';
               const selectedPack = {
                 ...pack,
                 price: Number(selectedPeriods[pack.id]?.price || pack.basePrice || pack.price || 0),
-                months: selectedPeriods[pack.id]?.months
+                months: selectedPeriods[pack.id]?.months,
+                is_code: isUc ? !!deliverAsCode[String(pack.id)] : false,
               };
-              console.log('selectedPack months:', selectedPack.months);
               onSelect(selectedPack);
             }} 
             className="relative bg-[#121212]/60 border border-white/10 rounded-[28px] p-3 flex flex-col items-center gap-3 active:scale-95 transition-all cursor-pointer group"
@@ -276,6 +279,24 @@ const Store: React.FC<StoreProps> = ({ onBack, onSelect }) => {
                       })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {pack.type === 'uc' && (
+                <div
+                  className="flex items-center justify-between w-full gap-2 px-1 py-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-[10px] font-bold text-white/70 uppercase tracking-tight text-left leading-tight">
+                    Выдать кодом
+                  </span>
+                  <IosSwitch
+                    checked={!!deliverAsCode[String(pack.id)]}
+                    onChange={(checked) => {
+                      window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+                      setDeliverAsCode((prev) => ({ ...prev, [String(pack.id)]: checked }));
+                    }}
+                  />
                 </div>
               )}
 

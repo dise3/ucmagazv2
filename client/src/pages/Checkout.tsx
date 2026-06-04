@@ -76,12 +76,12 @@ interface CheckoutProps {
     amount?: number; 
     price?: number; 
     basePrice?: number;
+    type?: 'pp' | 'tickets' | 'skin' | 'prime' | 'prime_plus' | 'login';
     image?: string; 
     is_code?: boolean; 
     is_skin?: boolean;
     is_prime?: boolean;
     items?: Array<{ id: number; amount: number; price: number; quantity: number }>;
-    type?: 'pp' | 'tickets' | 'skin' | 'prime' | 'prime_plus';
     title?: string;
     months?: number;
   };
@@ -92,6 +92,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   console.log('Pack in Checkout:', pack);
   const [paymentMethod, setPaymentMethod] = useState<'sbp' | 'card'>('sbp');
   const [uid, setUid] = useState('');
+  const [accountLogin, setAccountLogin] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [gameNickname, setGameNickname] = useState('');
   const [username, setUsername] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const [showUsernameHelp, setShowUsernameHelp] = useState(false);
@@ -162,6 +165,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       return pack.price || 0; // Скины без комиссии
     } else if (isMultiCode) {
       return items.reduce((sum: number, item: any) => sum + (getPriceForMethod(item.price, paymentMethod) * item.quantity), 0);
+    } else if (pack.type === 'login') {
+      return calculatePriceWithCommission(pack.basePrice || pack.price || 0, paymentMethod);
     } else {
       // Для UC
       return calculatePriceWithCommission((pack.price || 0) * (1 + (settings?.fee_percent || 0)), paymentMethod);
@@ -183,7 +188,13 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     setIsLoading(true);
     setError('');
     
-    if (!pack.is_code && !uid.trim()) {
+    if (pack.type === 'login') {
+      if (!accountLogin.trim() || !accountPassword.trim() || !gameNickname.trim()) {
+        setError('Заполните логин, пароль и игровой никнейм');
+        setIsLoading(false);
+        return;
+      }
+    } else if (!pack.is_code && !uid.trim()) {
       setError('Пожалуйста, введите UID');
       setIsLoading(false);
       return;
@@ -208,6 +219,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       ? 'Prime Gaming'
       : pack.type === 'prime_plus'
       ? 'Prime Gaming Plus'
+      : pack.type === 'login'
+      ? `Пополнение по входу ${totalAmount} UC`
       : isMultiCode
       ? `Промокоды: ${items.map((item: any) => `${item.amount} UC × ${item.quantity}`).join(', ')}`
       : (pack.is_code ? `Промокод ${totalAmount} UC` : `${totalAmount} UC`);
@@ -221,7 +234,16 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
           'tuna-skip-browser-warning': 'true'
         },
         body: JSON.stringify({
-          uid: pack.type === 'skin' ? pack.title : pack.type === 'prime' ? (uid.trim() || 'PRIME_SUBSCRIPTION') : pack.is_code ? 'MANUAL_ORDER' : uid.trim(),
+          uid:
+            pack.type === 'skin'
+              ? pack.title
+              : pack.type === 'prime'
+              ? uid.trim() || 'PRIME_SUBSCRIPTION'
+              : pack.type === 'login'
+              ? gameNickname.trim()
+              : pack.is_code
+              ? 'CODE_ORDER'
+              : uid.trim(),
           amount: (() => { const amt = pack.type === 'skin' ? 1 : (pack.amount || pack.months || totalAmount); console.log('Sending amount:', amt); return amt; })(),
           price: totalPrice,
           method_slug: paymentMethod,
@@ -230,6 +252,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
           buyer_last_name: tgUser?.last_name,
           is_code: pack.is_code || false,
           type: pack.type || 'uc',
+          account_login: pack.type === 'login' ? accountLogin.trim() : undefined,
+          account_password: pack.type === 'login' ? accountPassword.trim() : undefined,
+          game_nickname: pack.type === 'login' ? gameNickname.trim() : undefined,
           item_name: itemName,
           promo_items: isMultiCode ? items : undefined,
           username: !isTelegramApp ? username.trim() : undefined
@@ -357,7 +382,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
             <img src={pack.image || '/pp.png'} className="w-16 h-16 rounded-[20px] object-cover border-2 border-white/30" alt="Pack" />
             <div className="flex flex-col gap-2">
               <span className="text-2xl font-black italic text-white tracking-tighter">
-                {pack.title || `${(pack.amount || 0).toLocaleString()} ${pack.type === 'pp' ? 'ПП' : pack.type === 'tickets' ? 'билетов' : pack.type === 'prime' ? 'Prime' : pack.type === 'prime_plus' ? 'Prime Plus' : 'UC'}`}
+                {pack.title || `${(pack.amount || 0).toLocaleString()} ${pack.type === 'pp' ? 'ПП' : pack.type === 'tickets' ? 'билетов' : pack.type === 'prime' ? 'Prime' : pack.type === 'prime_plus' ? 'Prime Plus' : pack.type === 'login' ? 'UC · по входу' : 'UC'}`}
               </span>
               <div className="flex items-center gap-2 bg-amber-500/30 border-2 border-amber-500/50 px-3 py-1 rounded-full w-fit">
                 <span className="text-amber-400 text-[14px] font-black">{(() => { const p = getTotalPrice(); console.log('Render price:', p); return p.toLocaleString(); })()} ₽</span>
@@ -367,7 +392,36 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
         )}
       </div>
 
-      {(!pack.is_code) && (
+      {pack.type === 'login' && (
+        <div className="space-y-4">
+          {[
+            { label: 'Логин', value: accountLogin, set: setAccountLogin, placeholder: 'Логин аккаунта' },
+            { label: 'Пароль', value: accountPassword, set: setAccountPassword, placeholder: 'Пароль' },
+            { label: 'Игровой никнейм', value: gameNickname, set: setGameNickname, placeholder: 'Никнейм в игре' },
+          ].map((field) => (
+            <div key={field.label} className="space-y-2">
+              <label className="text-[12px] font-black text-white uppercase tracking-[0.2em] px-1">
+                {field.label}
+              </label>
+              <input
+                value={field.value}
+                onChange={(e) => field.set(e.target.value)}
+                className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white font-bold text-base outline-none focus:border-amber-500/60 transition-all"
+                placeholder={field.placeholder}
+                disabled={isLoading}
+                autoComplete="off"
+              />
+            </div>
+          ))}
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+            <p className="text-amber-300/90 text-xs font-medium leading-relaxed text-center">
+              Данные нужны для входа в аккаунт и пополнения UC. Заказ выполняется вручную.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!pack.is_code && pack.type !== 'login' && (
         <div className="space-y-3">
           <div className="flex justify-between items-end px-1">
             <label className="text-[12px] font-black text-white uppercase tracking-[0.2em]">PUBG UID</label>
@@ -429,7 +483,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       {pack.is_code && (
         <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-4">
           <p className="text-amber-300 font-bold text-center text-sm">
-          Промокод будет отправлен вам в личные сообщения в боте сразу после оплаты
+            Код на UC будет отправлен в личные сообщения бота сразу после оплаты
           </p>
         </div>
       )}
@@ -478,7 +532,12 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       <button 
         onClick={() => { triggerHapticFeedback('heavy'); handlePayment(); }} 
         className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-2xl font-black text-black text-xl active:scale-[0.98] transition-all uppercase tracking-tight relative overflow-hidden disabled:opacity-70"
-        disabled={(!pack.is_code && !uid.trim()) || isLoading}
+        disabled={
+          isLoading ||
+          (pack.type === 'login'
+            ? !accountLogin.trim() || !accountPassword.trim() || !gameNickname.trim()
+            : !pack.is_code && !uid.trim())
+        }
       >
         <div className="relative z-10 flex items-center justify-center gap-2">
           {isLoading ? <><Loader2 className="w-5 h-5 animate-spin" /><span>Обработка...</span></> : <span>Оплатить сейчас</span>}

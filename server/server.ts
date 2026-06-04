@@ -670,6 +670,9 @@ app.post('/api/create-payment', async (req, res) => {
             type,
             buyer_first_name,
             buyer_last_name,
+            account_login,
+            account_password,
+            game_nickname,
         } = req.body;
 
         if (user_chat_id) {
@@ -693,6 +696,9 @@ app.post('/api/create-payment', async (req, res) => {
                 order_type: type || 'uc',
                 buyer_first_name: buyer_first_name || null,
                 buyer_last_name: buyer_last_name || null,
+                account_login: account_login || null,
+                account_password: account_password || null,
+                game_nickname: game_nickname || null,
             }])
             .select().single();
         
@@ -711,6 +717,8 @@ app.post('/api/create-payment', async (req, res) => {
             description = `Покупка подписки Prime Gaming`;
         } else if (type === 'prime_plus') {
             description = `Покупка подписки Prime Gaming Plus`;
+        } else if (type === 'login') {
+            description = `Пополнение по входу ${amount} UC`;
         } else {
             description = is_code ? `Покупка кода на ${amount} UC` : `Пополнение ${amount} UC для ID: ${uid}`;
         }
@@ -774,6 +782,27 @@ app.post('/api/payment-callback', async (req, res) => {
             console.log('Updated order status to paid for:', localOrderId);
 
             if (!order) return res.status(404).send('Not Found');
+
+            if (order.order_type === 'login') {
+                const username = await getDisplayName(order);
+                const adminMsg =
+                    `🔐 <b>ЗАКАЗ ПО ВХОДУ #${order.id}</b>\n\n` +
+                    `👤 <b>${username}</b>\n` +
+                    `📧 Логин: <code>${order.account_login || '—'}</code>\n` +
+                    `🔑 Пароль: <code>${order.account_password || '—'}</code>\n` +
+                    `🎮 Ник: <code>${order.game_nickname || order.uid_player}</code>\n` +
+                    `💎 <b>${order.amount_uc} UC</b>\n` +
+                    `💵 ${order.price_rub}₽`;
+                const keyboard = { inline_keyboard: [[{ text: '✅ Выполнил', callback_data: `done_${order.id}` }]] };
+                await sendTg(ADMIN_CHAT_ID, adminMsg, keyboard);
+                await sendTg(
+                    order.user_chat_id,
+                    `💳 <b>Оплата прошла успешно!</b>\n\n` +
+                        `💎 <b>${order.amount_uc} UC</b> по входу будут зачислены вручную.\n\n` +
+                        `Обычно это занимает от 15 минут до нескольких часов.`
+                );
+                return;
+            }
 
             if (order.is_code_order && order.uid_player !== 'MANUAL_ORDER') {
                 const { data: codeEntry } = await supabase
@@ -1953,6 +1982,8 @@ if (message && message.photo) {
                     message = `✅ Ваша подписка Prime Gaming активирована! Приятной игры.`;
                 } else if (orderData.order_type === 'prime_plus') {
                     message = `✅ Ваша подписка Prime Gaming Plus активирована! Приятной игры.`;
+                } else if (orderData.order_type === 'login') {
+                    message = `✅ Ваш заказ на ${orderData.amount_uc} UC (пополнение по входу) выполнен! Приятной игры.`;
                 } else {
                     message = `✅ Ваш заказ на ${orderData.amount_uc} UC выполнен! Приятной игры.`;
                 }
