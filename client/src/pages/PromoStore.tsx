@@ -143,9 +143,6 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack }) => {
                                 <div className="relative p-[1.5px] bg-gradient-to-tr from-[#8a6d3b] via-[#e2c17d] to-[#8a6d3b] rounded-2xl">
                                     <div className="relative bg-[#0f0f0f] py-2.5 rounded-[14px] flex items-center justify-center overflow-hidden">
                                         <span className="relative z-10 bg-gradient-to-b from-[#f3d092] via-[#d4af37] to-[#8a6d3b] bg-clip-text text-transparent font-black text-[13px] uppercase tracking-wider">
-                                            {pack.price != null
-                                                ? `${Math.ceil(pack.price).toLocaleString('ru-RU')} ₽`
-                                                : 'Написать'}
                                         </span>
                                     </div>
                                 </div>
