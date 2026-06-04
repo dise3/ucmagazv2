@@ -16,6 +16,7 @@ import {
     completeWithdrawal,
     creditRub,
 } from './treasury.ts';
+import { getLeaderboard } from './leaderboard.ts';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -659,7 +660,26 @@ app.get('/api/promo-products', async (req, res) => {
 // 4. Создание платежа
 app.post('/api/create-payment', async (req, res) => {
     try {
-        const { uid, amount, price, method_slug, user_chat_id, is_code, type, username } = req.body;
+        const {
+            uid,
+            amount,
+            price,
+            method_slug,
+            user_chat_id,
+            is_code,
+            type,
+            buyer_first_name,
+            buyer_last_name,
+        } = req.body;
+
+        if (user_chat_id) {
+            await addBroadcastUser(
+                user_chat_id,
+                undefined,
+                buyer_first_name,
+                buyer_last_name
+            );
+        }
 
         const { data: order, error } = await supabase
             .from('orders')
@@ -670,7 +690,9 @@ app.post('/api/create-payment', async (req, res) => {
                 status: 'pending', 
                 user_chat_id,
                 is_code_order: !!is_code, 
-                order_type: type || 'uc' 
+                order_type: type || 'uc',
+                buyer_first_name: buyer_first_name || null,
+                buyer_last_name: buyer_last_name || null,
             }])
             .select().single();
         
@@ -823,6 +845,17 @@ app.post('/api/payment-callback', async (req, res) => {
     } catch (e) {
         console.error('Callback error:', e);
         res.status(500).send('Error');
+    }
+});
+
+// Топ покупателей UC за всё время (публичный)
+app.get('/api/leaderboard', async (_req, res) => {
+    try {
+        const leaders = await getLeaderboard(supabase, 10);
+        res.json(leaders);
+    } catch (e: any) {
+        console.error('[leaderboard]', e);
+        res.status(500).json({ error: 'Internal Error' });
     }
 });
 

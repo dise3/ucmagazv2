@@ -1,4 +1,4 @@
-
+-- Дочерний магазин: баланс в рублях и заявки на вывод
 
 CREATE TABLE IF NOT EXISTS shop_balance (
   id INTEGER PRIMARY KEY DEFAULT 1,

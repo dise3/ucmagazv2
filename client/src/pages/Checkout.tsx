@@ -191,7 +191,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     
     
     const tg = (window as any).Telegram?.WebApp;
-    const user_chat_id = tg?.initDataUnsafe?.user?.id;
+    const tgUser = tg?.initDataUnsafe?.user;
+    const user_chat_id = tgUser?.id;
 
     const totalAmount = isMultiCode
       ? items.reduce((sum: number, item: any) => sum + (item.amount * item.quantity), 0)
@@ -225,6 +226,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
           price: totalPrice,
           method_slug: paymentMethod,
           user_chat_id: user_chat_id,
+          buyer_first_name: tgUser?.first_name,
+          buyer_last_name: tgUser?.last_name,
           is_code: pack.is_code || false,
           type: pack.type || 'uc',
           item_name: itemName,
