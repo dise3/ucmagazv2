@@ -69,7 +69,7 @@ export const Navigation = ({ activeTab, onTabChange, isStoreMod }: NavigationPro
                 ) : (
                     <>
                         {/* Для обычного режима тоже уменьшили p-4 до p-3 */}
-                        <button onClick={() => openLink('https://t.me/rakuta_shop')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
+                        <button onClick={() => openLink('http://t.me/+ztroxO1In-Y4NzRi')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
                             <MessagesSquare size={24} strokeWidth={1.5} />
                         </button>
                         <button 
@@ -79,7 +79,10 @@ export const Navigation = ({ activeTab, onTabChange, isStoreMod }: NavigationPro
                         >
                             <Home size={26} strokeWidth={activeTab === 'home' ? 2 : 1.5} />
                         </button>
-                        <button onClick={() => openLink('https://t.me/KoT9lpa_MANAGER')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
+                        <button onClick={() => openLink('https://t.me/RAKUTAMANAGER')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
+                            <Headset size={24} strokeWidth={1.5} />
+                        </button>
+                            <button onClick={() => openLink('https://t.me/rakuta_shop')} className={`${baseBtnClass} text-white/40 p-3`} style={tapStyle}>
                             <Headset size={24} strokeWidth={1.5} />
                         </button>
                     </>

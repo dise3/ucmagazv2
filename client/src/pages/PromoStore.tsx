@@ -81,10 +81,10 @@ const PromoStore: React.FC<PromoStoreProps> = ({ onBack }) => {
                     <div className="relative w-14 h-14 bg-black rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden">
                         <img src="/pubg-logo.jpg" alt="Logo" className="w-full h-full object-cover scale-150" />
                     </div>
-                    <h2 className="text-xl font-black text-white tracking-tight italic uppercase">Дешёвое пополнение UC</h2>
+                    <h2 className="text-xl font-black text-white tracking-tight italic uppercase">UC по входу</h2>
                 </div>
                 <p className="relative z-10 text-[13px] text-white/60 leading-relaxed font-medium">
-                    Занимает ощутимо больше времени, нежели  <span className="text-amber-400 font-bold">автоматическое пополнение</span> 
+                    Для пополнения необходим доступ к <span className="text-amber-400 font-bold">аккаунту</span> и ваш <span className="text-amber-400 font-bold">игровой никнейм</span>
                 </p>
             </div>
 
