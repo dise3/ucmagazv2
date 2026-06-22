@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, HelpCircle, CheckCircle2, X, Loader2, Home } from 'lucide-react';
 
-const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; apiBase: string }> = ({ orderId, onClose, apiBase }) => {
+const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; apiBase: string; type?: string }> = ({ orderId, onClose, apiBase, type }) => {
   const [status, setStatus] = useState<'pending' | 'paid'>('pending');
 
   useEffect(() => {
@@ -28,6 +28,12 @@ const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; api
     return () => clearInterval(interval);
   }, [orderId, apiBase]);
 
+  const getSuccessMessage = () => {
+    if (type === 'steam_topup') return 'Средства будут зачислены на ваш баланс Steam в течение 5-15 минут.';
+    if (type === 'ps_gift') return 'Код активации придет в чат-бот в ближайшее время.';
+    return 'Ваш заказ будет выполнен в течение 5-15 минут.';
+  };
+
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[200] flex flex-col items-center justify-center px-6 text-center animate-in fade-in duration-500">
       <div className="w-full max-w-xs space-y-8">
@@ -53,7 +59,7 @@ const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; api
             <div className="space-y-2">
               <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">Успешно!</h2>
               <p className="text-white/50 font-medium text-sm leading-relaxed">
-                Заказ оплачен. UC будут зачислены на ваш аккаунт в течение 5-15 минут.
+                {getSuccessMessage()}
               </p>
             </div>
           </>
@@ -76,7 +82,7 @@ interface CheckoutProps {
     amount?: number; 
     price?: number; 
     basePrice?: number;
-    type?: 'pp' | 'tickets' | 'skin' | 'prime' | 'prime_plus' | 'login';
+    type?: 'pp' | 'tickets' | 'skin' | 'prime' | 'prime_plus' | 'login' | 'steam_topup' | 'ps_gift';
     image?: string; 
     is_code?: boolean; 
     is_skin?: boolean;
@@ -84,14 +90,14 @@ interface CheckoutProps {
     items?: Array<{ id: number; amount: number; price: number; quantity: number }>;
     title?: string;
     months?: number;
+    uid?: string; // Для передачи логина из предыдущих окон
   };
   onBack: () => void;
 }
 
 const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
-  console.log('Pack in Checkout:', pack);
   const [paymentMethod, setPaymentMethod] = useState<'sbp' | 'card'>('sbp');
-  const [uid, setUid] = useState('');
+  const [uid, setUid] = useState(pack.uid || '');
   const [accountLogin, setAccountLogin] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
   const [gameNickname, setGameNickname] = useState('');
@@ -103,13 +109,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
   
-  // Определяем, находится ли пользователь в Telegram mini app
   const isTelegramApp = !!(window as any).Telegram?.WebApp && 
-                        !!(window as any).Telegram?.WebApp?.initDataUnsafe?.user &&
-                        (window.location.href.includes('t.me') || window.location.search.includes('tgWebAppStartParam'));
-  
-  // Отладочная информация
-  console.log('isTelegramApp:', isTelegramApp, 'window.Telegram?.WebApp:', (window as any).Telegram?.WebApp, 'initDataUnsafe:', (window as any).Telegram?.WebApp?.initDataUnsafe, 'URL:', window.location.href);
+                        !!(window as any).Telegram?.WebApp?.initDataUnsafe?.user;
 
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
   const isMultiCode = pack.items && pack.items.length > 0;
@@ -117,18 +118,17 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const settingsRes = await fetch(`${VITE_API_NGROK}/api/settings`, {
-        headers: { 
-          'ngrok-skip-browser-warning': 'true',
-          'tuna-skip-browser-warning': 'true'
-        }
-      });
-      setSettings(await settingsRes.json());
+      try {
+        const settingsRes = await fetch(`${VITE_API_NGROK}/api/settings`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
+        setSettings(await settingsRes.json());
+      } catch (e) {
+        console.error("Settings load error:", e);
+      }
     };
-    if (pack.type === 'pp' || pack.type === 'tickets' || pack.type === 'prime' || pack.type === 'prime_plus') {
-      fetchData();
-    }
-  }, [pack.type, VITE_API_NGROK]);
+    fetchData(); // Загружаем настройки всегда для получения курса валют и наценок
+  }, [VITE_API_NGROK]);
 
   const COMMISSION_SBP = 0.0485;
   const COMMISSION_CARD = 0.071;
@@ -148,39 +148,55 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   };
 
   const getTotalPrice = (): number => {
-    console.log('getTotalPrice pack:', pack, 'price:', pack.price, 'type:', pack.type);
+    if (!settings) return 0;
+
+    if (pack.type === 'steam_topup') {
+      const rate = settings.usd_rate_store || settings.usd_rate || 95;
+      const steamFee = settings.steam_fee_percent || 0.15; // 15% наценка по умолчанию
+      const baseRub = (pack.amount || 0) * rate;
+      const withMarkup = Math.ceil(baseRub * (1 + steamFee));
+      return calculatePriceWithCommission(withMarkup, paymentMethod);
+    }
+
+    if (pack.type === 'ps_gift') {
+      // Для PS цена уже передана фиксированная в рублях (без учета комиссии платежки)
+      return calculatePriceWithCommission(pack.price || 0, paymentMethod);
+    }
+
     if (pack.type === 'pp') {
-      if (!settings) return 0;
       const base = (settings.pp_price_usd * ((pack.amount || 0) / 10000)) * settings.usd_rate + (settings.pp_markup_rub || 0);
       return calculatePriceWithCommission(Math.ceil(base * (1 + settings.fee_percent)), paymentMethod);
-    } else if (pack.type === 'tickets') {
-      if (!settings) return 0;
+    } 
+    
+    if (pack.type === 'tickets') {
       const base = (settings.ticket_price_usd * ((pack.amount || 0) / 100)) * settings.usd_rate + (settings.ticket_markup_rub || 0);
       return calculatePriceWithCommission(Math.ceil(base * (1 + settings.fee_percent)), paymentMethod);
-    } else if (pack.type === 'prime') {
+    } 
+    
+    if (pack.type === 'prime' || pack.type === 'prime_plus') {
       return calculatePriceWithCommission(pack.price || 0, paymentMethod);
-    } else if (pack.type === 'prime_plus') {
-      return calculatePriceWithCommission(pack.price || 0, paymentMethod);
-    } else if (pack.type === 'skin') {
-      return pack.price || 0; // Скины без комиссии
-    } else if (isMultiCode) {
+    } 
+    
+    if (pack.type === 'skin') {
+      return pack.price || 0; 
+    } 
+    
+    if (isMultiCode) {
       return items.reduce((sum: number, item: any) => sum + (getPriceForMethod(item.price, paymentMethod) * item.quantity), 0);
-    } else if (pack.type === 'login') {
+    } 
+    
+    if (pack.type === 'login') {
       return calculatePriceWithCommission(pack.basePrice || pack.price || 0, paymentMethod);
-    } else {
-      // Для UC
-      return calculatePriceWithCommission((pack.price || 0) * (1 + (settings?.fee_percent || 0)), paymentMethod);
     }
+
+    // Стандартный UC
+    return calculatePriceWithCommission((pack.price || 0) * (1 + (settings?.fee_percent || 0)), paymentMethod);
   };
 
   const triggerHapticFeedback = (style: 'light' | 'medium' | 'heavy' | 'success' | 'error' = 'medium') => {
     const tg = (window as any).Telegram?.WebApp?.HapticFeedback;
     if (tg) {
-      if (style === 'success' || style === 'error') {
-        tg.notificationOccurred(style);
-      } else {
-        tg.impactOccurred(style);
-      }
+      style === 'success' || style === 'error' ? tg.notificationOccurred(style) : tg.impactOccurred(style);
     }
   };
 
@@ -191,89 +207,45 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     if (pack.type === 'login') {
       if (!accountLogin.trim() || !accountPassword.trim() || !gameNickname.trim()) {
         setError('Заполните логин, пароль и игровой никнейм');
-        setIsLoading(false);
-        return;
+        setIsLoading(false); return;
       }
     } else if (!pack.is_code && !uid.trim()) {
-      setError('Пожалуйста, введите UID');
-      setIsLoading(false);
-      return;
+      setError(pack.type === 'steam_topup' ? 'Введите логин Steam' : 'Введите UID');
+      setIsLoading(false); return;
     }
-    
     
     const tg = (window as any).Telegram?.WebApp;
     const tgUser = tg?.initDataUnsafe?.user;
-    const user_chat_id = tgUser?.id;
 
-    const totalAmount = isMultiCode
-      ? items.reduce((sum: number, item: any) => sum + (item.amount * item.quantity), 0)
-      : (pack.amount || 0);
     const totalPrice = getTotalPrice();
-    const itemName = pack.type === 'pp' 
-      ? `${totalAmount} ПП` 
-      : pack.type === 'tickets' 
-      ? `${totalAmount} билетов` 
-      : pack.type === 'skin'
-      ? pack.title || 'Скин'
-      : pack.type === 'prime'
-      ? 'Prime Gaming'
-      : pack.type === 'prime_plus'
-      ? 'Prime Gaming Plus'
-      : pack.type === 'login'
-      ? `Пополнение по входу ${totalAmount} UC`
-      : isMultiCode
-      ? `Промокоды: ${items.map((item: any) => `${item.amount} UC × ${item.quantity}`).join(', ')}`
-      : (pack.is_code ? `Промокод ${totalAmount} UC` : `${totalAmount} UC`);
 
     try {
       const response = await fetch(`${VITE_API_NGROK}/api/create-payment`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'tuna-skip-browser-warning': 'true'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          uid:
-            pack.type === 'skin'
-              ? pack.title
-              : pack.type === 'prime'
-              ? uid.trim() || 'PRIME_SUBSCRIPTION'
-              : pack.type === 'login'
-              ? gameNickname.trim()
-              : pack.is_code
-              ? 'CODE_ORDER'
-              : uid.trim(),
-          amount: (() => { const amt = pack.type === 'skin' ? 1 : (pack.amount || pack.months || totalAmount); console.log('Sending amount:', amt); return amt; })(),
+          uid: uid.trim(),
+          amount: pack.amount || 0, // Для PS тут будет Service ID, для Steam - кол-во USD
           price: totalPrice,
           method_slug: paymentMethod,
-          user_chat_id: user_chat_id,
+          user_chat_id: tgUser?.id,
           buyer_first_name: tgUser?.first_name,
           buyer_last_name: tgUser?.last_name,
           is_code: pack.is_code || false,
           type: pack.type || 'uc',
-          account_login: pack.type === 'login' ? accountLogin.trim() : undefined,
-          account_password: pack.type === 'login' ? accountPassword.trim() : undefined,
-          game_nickname: pack.type === 'login' ? gameNickname.trim() : undefined,
-          item_name: itemName,
-          promo_items: isMultiCode ? items : undefined,
+          account_login: accountLogin.trim() || undefined,
+          account_password: accountPassword.trim() || undefined,
+          game_nickname: gameNickname.trim() || undefined,
           username: !isTelegramApp ? username.trim() : undefined
         })
       });
 
       const data = await response.json();
-
-      if (!response.ok) throw new Error(data.error || 'Ошибка при создании заказа');
+      if (!response.ok) throw new Error(data.error || 'Ошибка');
 
       if (data.url) {
         setActiveOrderId(data.order_id);
-        if (tg && tg.openLink) {
-          tg.openLink(data.url);
-        } else {
-          window.location.href = data.url;
-        }
-      } else {
-        setError('Платежная система не вернула ссылку');
+        tg?.openLink ? tg.openLink(data.url) : window.location.href = data.url;
       }
     } catch (err: any) {
       setError(err.message || 'Ошибка сети');
@@ -289,260 +261,118 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
         <PaymentStatusOverlay 
           orderId={activeOrderId} 
           apiBase={VITE_API_NGROK} 
-          onClose={() => {
-            setActiveOrderId(null);
-            onBack();
-          }}
+          type={pack.type}
+          onClose={() => { setActiveOrderId(null); onBack(); }}
         />
       )}
 
-      {showHelp && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] animate-in fade-in duration-300"
-          onClick={() => setShowHelp(false)}
-        />
-      )}
-
-      <div 
-        className={`fixed bottom-0 left-0 right-0 z-[101] bg-[#1c1c1e] border-t border-white/10 rounded-t-[40px] transition-transform duration-500 ease-out ${
-          showHelp ? 'translate-y-0' : 'translate-y-full'
-        }`} 
-        style={{ height: '72%' }}
-      >
+      {/* Модалка помощи по UID */}
+      <div className={`fixed bottom-0 left-0 right-0 z-[101] bg-[#1c1c1e] border-t border-white/10 rounded-t-[40px] transition-transform duration-500 ${showHelp ? 'translate-y-0' : 'translate-y-full'}`} style={{ height: '72%' }}>
         <div className="px-6 flex justify-between items-center mt-8 mb-6">
-          <h2 className="text-xl font-black text-white uppercase italic">Где найти UID?</h2>
-          <button 
-            onClick={() => setShowHelp(false)} 
-            className="p-3 bg-white/5 hover:bg-white/10 rounded-full text-white/50 active:scale-90 transition-all"
-          >
-            <X size={24} />
-          </button>
+          <h2 className="text-xl font-black text-white uppercase italic">Помощь</h2>
+          <button onClick={() => setShowHelp(false)} className="p-3 bg-white/5 rounded-full text-white/50"><X size={24} /></button>
         </div>
-
-        <div className="px-6 pb-10 overflow-y-auto h-[calc(100%-100px)]">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-3 text-center">
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider">1. На аватар</p>
-              <div className="overflow-hidden rounded-2xl border border-white/10 shadow-lg aspect-[3/4]">
-                <img src="/guide-1.jpg" className="w-full h-full object-cover" alt="Guide 1" />
-              </div>
-            </div>
-            <div className="space-y-3 text-center">
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider">2. Копируйте ID</p>
-              <div className="overflow-hidden rounded-2xl border border-white/10 shadow-lg aspect-[3/4]">
-                <img src="/guide-2.jpg" className="w-full h-full object-cover" alt="Guide 2" />
-              </div>
-            </div>
-          </div>
+        <div className="px-6 pb-10 flex flex-col items-center justify-center text-white/70 text-center">
+            <p className="mb-4">Для Steam используйте Логин (имя аккаунта), который вы вводите при входе.</p>
+            <img src="/steam-help.jpg" className="rounded-2xl border border-white/10" alt="Steam Help" />
         </div>
       </div>
 
       <div className="flex items-center gap-4 pt-6">
-        <button
-          onClick={() => { triggerHapticFeedback('light'); onBack(); }} 
-          className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl active:scale-90 transition-all border border-white/30"
-        >
+        <button onClick={() => { triggerHapticFeedback('light'); onBack(); }} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/30">
           <ChevronLeft size={20} className="text-white" strokeWidth={3} />
         </button>
-        <h1 className="text-2xl font-black tracking-tight text-white uppercase italic">Оплата</h1>
+        <h1 className="text-2xl font-black text-white uppercase italic">Оплата</h1>
       </div>
 
-      <div className="bg-black/50 backdrop-blur-xl rounded-[32px] p-6 border border-amber-500/40 relative overflow-hidden group">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/15 to-transparent opacity-60" />
-        {isMultiCode ? (
-          <div className="relative z-10 space-y-3">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-16 h-16 bg-amber-500/20 rounded-[20px] flex items-center justify-center border-2 border-amber-500/30">
-                <span className="text-amber-400 text-2xl">🎁</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xl font-black italic text-white tracking-tighter">
-                  {items.reduce((sum: number, item: any) => sum + (item.amount * item.quantity), 0).toLocaleString()} <span className="text-amber-400">UC</span>
-                </span>
-                <span className="text-amber-400 text-[14px] font-black">
-                  {getTotalPrice().toLocaleString()} ₽
-                </span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {items.map((item: any, index: number) => (
-                <div key={index} className="flex items-center justify-between bg-white/5 rounded-xl p-3">
-                  <span className="text-white text-sm font-bold">
-                    {item.amount} UC × {item.quantity}
-                  </span>
-                  <span className="text-amber-400 text-sm font-black">
-                    {(getPriceForMethod(item.price, paymentMethod) * item.quantity).toLocaleString()} ₽
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* Карточка товара */}
+      <div className="bg-black/50 backdrop-blur-xl rounded-[32px] p-6 border border-amber-500/40 relative overflow-hidden">
+        <div className="flex items-center gap-5 relative z-10">
+          <img src={pack.image || '/pp.png'} className="w-16 h-16 rounded-[20px] object-cover border-2 border-white/30" alt="Pack" />
+          <div className="flex flex-col gap-1">
+            <span className="text-xl font-black italic text-white tracking-tighter uppercase">
+              {pack.title || `${pack.amount} UC`}
+            </span>
+            <span className="text-amber-400 font-black">{getTotalPrice().toLocaleString()} ₽</span>
           </div>
-        ) : (
-          <div className="flex items-center gap-5 relative z-10">
-            <img src={pack.image || '/pp.png'} className="w-16 h-16 rounded-[20px] object-cover border-2 border-white/30" alt="Pack" />
-            <div className="flex flex-col gap-2">
-              <span className="text-2xl font-black italic text-white tracking-tighter">
-                {pack.title || `${(pack.amount || 0).toLocaleString()} ${pack.type === 'pp' ? 'ПП' : pack.type === 'tickets' ? 'билетов' : pack.type === 'prime' ? 'Prime' : pack.type === 'prime_plus' ? 'Prime Plus' : pack.type === 'login' ? 'UC · по входу' : 'UC'}`}
-              </span>
-              <div className="flex items-center gap-2 bg-amber-500/30 border-2 border-amber-500/50 px-3 py-1 rounded-full w-fit">
-                <span className="text-amber-400 text-[14px] font-black">{(() => { const p = getTotalPrice(); console.log('Render price:', p); return p.toLocaleString(); })()} ₽</span>
-              </div>
+        </div>
+      </div>
+
+      {/* Поля ввода данных */}
+      <div className="space-y-4">
+        {pack.type === 'login' ? (
+           <>
+             {/* Поля для входа в PUBG */}
+             <div className="space-y-2">
+               <label className="text-[12px] font-black text-white uppercase px-1">Логин</label>
+               <input value={accountLogin} onChange={(e) => setAccountLogin(e.target.value)} className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white outline-none focus:border-amber-500/60" />
+             </div>
+             <div className="space-y-2">
+               <label className="text-[12px] font-black text-white uppercase px-1">Пароль</label>
+               <input type="password" value={accountPassword} onChange={(e) => setAccountPassword(e.target.value)} className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white outline-none focus:border-amber-500/60" />
+             </div>
+             <div className="space-y-2">
+               <label className="text-[12px] font-black text-white uppercase px-1">Никнейм</label>
+               <input value={gameNickname} onChange={(e) => setGameNickname(e.target.value)} className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white outline-none focus:border-amber-500/60" />
+             </div>
+           </>
+        ) : !pack.is_code && (
+          <div className="space-y-3">
+            <div className="flex justify-between items-end px-1">
+              <label className="text-[12px] font-black text-white uppercase tracking-widest">
+                {pack.type === 'steam_topup' ? 'Логин Steam' : 'Игровой UID'}
+              </label>
+              {pack.type !== 'steam_topup' && (
+                <button onClick={() => setShowHelp(true)} className="flex items-center gap-1.5 text-[11px] text-amber-400 font-bold uppercase">
+                  Где найти? <HelpCircle size={14} />
+                </button>
+              )}
             </div>
+            <input 
+              value={uid} onChange={(e) => setUid(e.target.value)}
+              placeholder={pack.type === 'steam_topup' ? "Введите имя аккаунта" : "Введите ID игрока"}
+              className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white font-black text-lg outline-none focus:border-amber-500/60" 
+            />
+          </div>
+        )}
+
+        {!isTelegramApp && (
+          <div className="space-y-2">
+            <label className="text-[12px] font-black text-white uppercase px-1">Тэг Telegram для связи</label>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@username" className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white outline-none" />
           </div>
         )}
       </div>
 
-      {pack.type === 'login' && (
-        <div className="space-y-4">
-          {[
-            { label: 'Логин', value: accountLogin, set: setAccountLogin, placeholder: 'Логин аккаунта' },
-            { label: 'Пароль', value: accountPassword, set: setAccountPassword, placeholder: 'Пароль' },
-            { label: 'Игровой никнейм', value: gameNickname, set: setGameNickname, placeholder: 'Никнейм в игре' },
-          ].map((field) => (
-            <div key={field.label} className="space-y-2">
-              <label className="text-[12px] font-black text-white uppercase tracking-[0.2em] px-1">
-                {field.label}
-              </label>
-              <input
-                value={field.value}
-                onChange={(e) => field.set(e.target.value)}
-                className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white font-bold text-base outline-none focus:border-amber-500/60 transition-all"
-                placeholder={field.placeholder}
-                disabled={isLoading}
-                autoComplete="off"
-              />
-            </div>
-          ))}
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-            <p className="text-amber-300/90 text-xs font-medium leading-relaxed text-center">
-              Данные нужны для входа в аккаунт и пополнения UC. Заказ выполняется вручную.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {!pack.is_code && pack.type !== 'login' && (
-        <div className="space-y-3">
-          <div className="flex justify-between items-end px-1">
-            <label className="text-[12px] font-black text-white uppercase tracking-[0.2em]">PUBG UID</label>
-            <button onClick={() => { triggerHapticFeedback('light'); setShowHelp(true); }} className="flex items-center gap-1.5 text-[12px] text-amber-400 font-black uppercase tracking-wider">
-              <span>Где мой UID?</span>
-              <HelpCircle size={14} strokeWidth={3} />
-            </button>
-          </div>
-          <div className="relative">
-            <input 
-              value={uid}
-              onChange={(e) => setUid(e.target.value)}
-              className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white font-black text-lg outline-none focus:border-amber-500/60 transition-all" 
-              placeholder="Введите UID" 
-              disabled={isLoading}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Поле для юзернейма - только для веб-версии */}
-      {!isTelegramApp && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 px-1">
-            <label className="text-[12px] font-black text-white uppercase tracking-[0.2em]">
-              Юзернейм для связи
-            </label>
-            <button 
-              onClick={() => setShowUsernameHelp(!showUsernameHelp)}
-              className="w-4 h-4 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center flex-shrink-0"
-            >
-              <span className="text-white text-[10px] font-bold">?</span>
-            </button>
-          </div>
-          
-          {/* Всплывающая подсказка */}
-          {showUsernameHelp && (
-            <div className="bg-gray-700/30 border border-gray-600/40 rounded-xl p-3 mx-1">
-              <p className="text-gray-300 text-[11px] leading-relaxed">
-                Если вдруг будет какая-то проблема, чтобы администратор мог с вами связаться
-              </p>
-            </div>
-          )}
-          <div className="relative">
-            <input 
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-white/15 border-2 border-white/20 rounded-2xl py-4 px-6 text-white font-black text-lg outline-none focus:border-amber-500/60 transition-all" 
-              placeholder="@username" 
-              disabled={isLoading}
-            />
-          </div>
-          <p className="text-[11px] text-white/50 px-1">
-            Нужен для связи с вами в случае вопросов по заказу
-          </p>
-        </div>
-      )}
-      
-      {pack.is_code && (
-        <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-4">
-          <p className="text-amber-300 font-bold text-center text-sm">
-            Код на UC будет отправлен в личные сообщения бота сразу после оплаты
-          </p>
-        </div>
-      )}
-
-      
-      <div className="space-y-3">
-        <label className="text-[12px] font-black text-white uppercase tracking-[0.2em] px-1 text-center block">Метод оплаты</label>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { id: 'sbp' as const, img: '/sbp.jpg', label: 'СБП' },
-            { id: 'card' as const, img: '/card.jpg', label: 'Карты' }
-          ].map((method) => (
-            <button 
-              key={method.id}
-              onClick={() => { triggerHapticFeedback('light'); setPaymentMethod(method.id); }} 
-              className={`h-24 rounded-3xl border-4 transition-all flex flex-col items-center justify-center relative overflow-hidden ${
-                paymentMethod === method.id ? 'bg-amber-500/20 border-amber-500 shadow-lg' : 'bg-white/5 border-white/10 opacity-70'
-              }`}
-            >
-              <img src={method.img} className="h-10 object-contain relative z-10" alt={method.label} />
-              {paymentMethod === method.id && (
-                <div className="absolute top-2 right-2 bg-amber-500 rounded-full p-0.5 shadow-md">
-                  <CheckCircle2 size={16} className="text-black" strokeWidth={3} />
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Выбор метода оплаты */}
+      <div className="grid grid-cols-2 gap-4">
+        {[{ id: 'sbp' as const, img: '/sbp.jpg' }, { id: 'card' as const, img: '/card.jpg' }].map((m) => (
+          <button 
+            key={m.id} onClick={() => { triggerHapticFeedback('light'); setPaymentMethod(m.id); }} 
+            className={`h-24 rounded-3xl border-4 transition-all flex items-center justify-center relative ${paymentMethod === m.id ? 'bg-amber-500/20 border-amber-500 shadow-lg' : 'bg-white/5 border-white/10'}`}
+          >
+            <img src={m.img} className="h-10 object-contain" alt={m.id} />
+            {paymentMethod === m.id && <div className="absolute top-2 right-2 bg-amber-500 rounded-full p-0.5"><CheckCircle2 size={16} className="text-black" /></div>}
+          </button>
+        ))}
       </div>
 
-      {error && (
-        <div className="bg-red-500/20 border-2 border-red-500/50 rounded-2xl p-4 animate-in fade-in">
-          <p className="text-red-300 font-bold text-center text-sm">{error}</p>
-        </div>
-      )}
+      {error && <div className="bg-red-500/20 border-2 border-red-500/50 rounded-2xl p-4 text-red-300 font-bold text-center text-sm">{error}</div>}
 
-      <div className="bg-black/70 backdrop-blur-2xl rounded-[40px] p-8 space-y-6 border-2 border-white/10 shadow-2xl mt-auto">
-        <div className="flex justify-between items-center">
-          <span className="text-2xl font-black text-white uppercase italic tracking-tight">Итого</span>
-          <span className="text-4xl font-black text-amber-400 tracking-tighter">
-            {(() => { const p = getTotalPrice(); console.log('Total price:', p); return p.toFixed(2); })()}<span className="text-xl ml-1">₽</span>
-          </span>
+      <div className="mt-auto pt-4">
+        <div className="flex justify-between items-center mb-6 px-2">
+            <span className="text-xl font-black text-white uppercase italic">Итого:</span>
+            <span className="text-3xl font-black text-amber-400">{getTotalPrice().toFixed(2)} ₽</span>
         </div>
+        
+        <button 
+          onClick={() => { triggerHapticFeedback('heavy'); handlePayment(); }} 
+          disabled={isLoading || (!pack.is_code && !uid.trim())}
+          className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-2xl font-black text-black text-xl uppercase transition-all disabled:opacity-50"
+        >
+          {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Оплатить'}
+        </button>
       </div>
-
-      <button 
-        onClick={() => { triggerHapticFeedback('heavy'); handlePayment(); }} 
-        className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-2xl font-black text-black text-xl active:scale-[0.98] transition-all uppercase tracking-tight relative overflow-hidden disabled:opacity-70"
-        disabled={
-          isLoading ||
-          (pack.type === 'login'
-            ? !accountLogin.trim() || !accountPassword.trim() || !gameNickname.trim()
-            : !pack.is_code && !uid.trim())
-        }
-      >
-        <div className="relative z-10 flex items-center justify-center gap-2">
-          {isLoading ? <><Loader2 className="w-5 h-5 animate-spin" /><span>Обработка...</span></> : <span>Оплатить сейчас</span>}
-        </div>
-      </button>
     </div>
   );
 };
