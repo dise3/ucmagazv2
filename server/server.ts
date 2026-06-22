@@ -23,6 +23,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { nsClient } from './ns_service.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const START_IMAGE_PATH = join(__dirname, '..', 'client', 'public', 'start.jpg');
@@ -69,6 +70,21 @@ type AdminState = {
     withdrawAmount?: number;
 };
 const adminStates = new Map<string, AdminState>();
+
+
+const NS_SERVICES = {
+    STEAM_TOPUP: 1, // Прямое пополнение RU/KZ/UA
+    
+    // Карта соответствия номиналов PS и их ID в NS API
+    PLAYSTATION: {
+        PLN: { 50: 106, 100: 107 },
+        TRY: { 
+            250: 72, 500: 73, 750: 74, 1000: 75, 1500: 76, 
+            2000: 77, 2500: 78, 3000: 79, 4000: 80, 5000: 81 
+        },
+        USD: { 1: 115, 5: 116, 10: 117, 25: 118, 50: 119, 75: 120, 100: 121 }
+    }
+};
 
 // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ TELEGRAM ---
 
@@ -773,7 +789,13 @@ app.post('/api/create-payment', async (req, res) => {
             description = `Покупка подписки Prime Gaming Plus`;
         } else if (type === 'login') {
             description = `Пополнение по входу ${amount} UC`;
-        } else {
+        } 
+        else if (type === 'steam_topup') {
+            description = `Пополнение Steam (логин: ${uid}) на $${amount}`;
+        } else if (type === 'ps_gift') {
+            description = `Подарочная карта PlayStation (ID товара: ${amount})`;
+} 
+        else {
             description = is_code ? `Покупка кода на ${amount} UC` : `Пополнение ${amount} UC для ID: ${uid}`;
         }
 
@@ -816,6 +838,7 @@ app.get('/api/check-status/:orderId', async (req, res) => {
 });
 
 // 6. Callback от платежной системы
+// 6. Callback от платежной системы
 app.post('/api/payment-callback', async (req, res) => {
     console.log('Request from IP:', req.ip, 'Body:', JSON.stringify(req.body, null, 2));
     res.status(200).send('OK');
@@ -847,6 +870,81 @@ app.post('/api/payment-callback', async (req, res) => {
             } catch (e) {
                 console.error('[treasury_child] recordChildOrderRevenue', e);
             }
+
+            // --- НОВЫЙ БЛОК: ОБРАБОТКА STEAM И PLAYSTATION (NS API) ---
+            if (order.order_type === 'steam_topup' || order.order_type === 'ps_gift') {
+                try {
+                    console.log(`[NS API] Обработка заказа #${order.id} (${order.order_type})`);
+                    
+                    let serviceId: number;
+                    let fields: any[];
+
+                    if (order.order_type === 'steam_topup') {
+                        // --- ЛОГИКА STEAM (Пополнение по логину) ---
+                        // Используем ID 1 из вашего списка для пополнения Steam
+                        serviceId = 1; 
+                        fields = [
+                            { key: "account", value: order.uid_player }, // Логин Steam
+                            { key: "amount", value: order.amount_uc }    // Сумма в USD
+                        ];
+                    } else {
+                        // --- ЛОГИКА PLAYSTATION (Выдача кода) ---
+                        // Service ID берется из amount_uc (который вы передали при создании заказа)
+                        serviceId = Number(order.amount_uc); 
+                        fields = [{ key: "quantity", value: 1 }];
+                    }
+
+                    // 1. Создаем заказ в NS API
+                    await nsClient.call("POST", "/api/v2/create_order", null, {
+                        service_id: serviceId,
+                        custom_id: `order_${order.id}`,
+                        fields: fields
+                    });
+                    
+                    // 2. Оплачиваем заказ (списание баланса NS)
+                    const payResult = await nsClient.call("POST", "/api/v2/pay_order", null, {
+                        custom_id: `order_${order.id}`
+                    });
+
+                    if (payResult.status === 'completed') {
+                        if (order.order_type === 'ps_gift' && payResult.pins) {
+                            // Если это код PlayStation
+                            const pinCode = payResult.pins[0];
+                            await sendTg(order.user_chat_id, 
+                                `🎁 <b>Ваш код PlayStation готов!</b>\n\n` +
+                                `Код: <code>${pinCode}</code>\n\n` +
+                                `<i>Активируйте его в настройках вашего аккаунта PS Store.</i>`
+                            );
+                        } else {
+                            // Если это пополнение Steam
+                            await sendTg(order.user_chat_id, 
+                                `✅ <b>Баланс Steam успешно пополнен!</b>\n\n` +
+                                `Логин: <code>${order.uid_player}</code>\n` +
+                                `Сумма: $${order.amount_uc}`
+                            );
+                        }
+
+                        // Ставим статус "Выполнено" в Supabase
+                        await supabase.from('orders').update({ status: 'completed' }).eq('id', order.id);
+                        await sendTg(ADMIN_CHAT_ID, `✅ Заказ #${order.id} успешно выдан через NS API.`);
+
+                    } else if (payResult.status === 'in_progress') {
+                        await sendTg(order.user_chat_id, `⏳ Ваш заказ находится в обработке на стороне провайдера. Мы пришлем уведомление сразу после активации.`);
+                    }
+                    
+                    return; // Выходим, так как заказ обработан через NS API
+                } catch (e: any) {
+                    console.error('❌ Ошибка автовыдачи NS:', e.message);
+                    await sendTg(ADMIN_CHAT_ID, 
+                        `❌ <b>ОШИБКА АВТОВЫДАЧИ #${order.id}</b>\n` +
+                        `Тип: ${order.order_type}\n` +
+                        `Причина: ${e.message}\n\n` +
+                        `⚠️ Требуется ручная проверка/выдача!`
+                    );
+                    return; // Прекращаем выполнение, чтобы не сработали другие условия
+                }
+            }
+            // --- КОНЕЦ БЛОКА NS API ---
 
             if (order.order_type === 'login') {
                 const username = await getDisplayName(order);
