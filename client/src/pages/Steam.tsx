@@ -12,7 +12,7 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
   const [mode, setMode] = useState<'receive' | 'pay'>('receive');
   const [showCheckout, setShowCheckout] = useState(false);
   const [settings, setSettings] = useState<any>(null);
-  const [showHelp, setShowHelp] = useState(false); // Состояние для плашки помощи
+  const [showHelp, setShowHelp] = useState(false);
 
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
 
@@ -28,20 +28,14 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
   const calculateFinalPriceRub = () => {
     const val = parseFloat(amount) || 0;
-    if (mode === 'pay') {
-        return Math.ceil(val);
-    } else {
-        return Math.ceil(val * (1 + steamMarkup) * paymentCommision + 1);
-    }
+    if (mode === 'pay') return Math.ceil(val);
+    return Math.ceil(val * (1 + steamMarkup) * paymentCommision + 1);
   };
 
   const calculateUsdForApi = () => {
     const val = parseFloat(amount) || 0;
-    if (mode === 'pay') {
-        return (val / paymentCommision / (1 + steamMarkup) / usdRate).toFixed(2);
-    } else {
-        return (val / usdRate).toFixed(2);
-    }
+    if (mode === 'pay') return (val / paymentCommision / (1 + steamMarkup) / usdRate).toFixed(2);
+    return (val / usdRate).toFixed(2);
   };
 
   if (showCheckout) {
@@ -61,27 +55,25 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-12 animate-in fade-in duration-500 px-4 max-w-md mx-auto relative">
+    <div className="flex flex-col gap-6 pb-12 animate-in fade-in duration-500 px-4 max-w-md mx-auto relative">
       
       {/* ПЛАШКА ИНСТРУКЦИИ (Bottom Sheet) */}
       {showHelp && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] animate-in fade-in duration-300"
           onClick={() => setShowHelp(false)}
         />
       )}
       
       <div 
-        className={`fixed bottom-0 left-0 right-0 z-[101] bg-[#1c1c21] border-t border-white/10 rounded-t-[32px] transition-transform duration-500 ease-out shadow-2xl flex flex-col items-center ${
+        className={`fixed bottom-0 left-0 right-0 z-[101] bg-[#1c1c21] border-t border-amber-500/20 rounded-t-[32px] transition-transform duration-500 ease-out shadow-2xl flex flex-col items-center ${
           showHelp ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
-        {/* Декоративный элемент сверху */}
         <div className="w-12 h-1.5 bg-white/10 rounded-full mt-3 mb-2" />
-        
         <div className="w-full px-6 pt-2 pb-8 flex flex-col items-center gap-4">
           <div className="flex justify-between items-center w-full">
-            <h3 className="text-white font-bold text-lg">Где найти логин?</h3>
+            <h3 className="text-white font-bold text-lg italic">Помощь с логином</h3>
             <button 
               onClick={() => setShowHelp(false)}
               className="p-2 bg-white/5 rounded-full text-white/50 active:scale-90"
@@ -89,19 +81,12 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
               <X size={20} />
             </button>
           </div>
-          
-          {/* ФОТО ИНСТРУКЦИЯ */}
           <div className="w-full overflow-hidden rounded-2xl border border-white/10">
-            <img 
-              src="/steam_i.png" 
-              alt="Steam Login Instruction" 
-              className="w-full h-auto object-contain"
-            />
+            <img src="/steam_i.png" alt="Instruction" className="w-full h-auto object-contain" />
           </div>
-          
           <button 
             onClick={() => setShowHelp(false)}
-            className="w-full py-4 bg-[#4e4ef2] text-white font-black rounded-xl uppercase tracking-wider text-sm active:scale-95 transition-all"
+            className="w-full py-4 bg-amber-500 text-black font-black rounded-xl uppercase tracking-wider text-sm active:scale-95 transition-all"
           >
             Понятно
           </button>
@@ -110,21 +95,25 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
       {/* Шапка */}
       <div className="flex items-center gap-4 py-2">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-xl active:scale-90 transition-all">
-          <ChevronLeft size={20} className="text-gray-400" />
+        <button onClick={onBack} className="p-2 bg-white/5 rounded-xl active:scale-90 transition-all border border-white/5">
+          <ChevronLeft size={20} className="text-amber-500" />
         </button>
-        <h1 className="text-xl font-bold text-white uppercase italic tracking-tight">Steam</h1>
+        <h1 className="text-xl font-black text-white uppercase italic tracking-tight">Steam <span className="text-amber-500">Top-up</span></h1>
       </div>
 
       {/* БЛОК 01 - ЛОГИН */}
-      <div className="relative">
-        <span className="absolute -top-2 -left-1 text-2xl font-black text-white italic">01</span>
-        <div className="bg-[#242429] border border-white/5 rounded-[28px] p-5 space-y-4 shadow-xl">
+      <div className="relative group">
+        {/* Красивый индикатор шага */}
+        <div className="absolute -top-3 -left-2 bg-gradient-to-br from-amber-400 to-orange-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-amber-900/40 transform -rotate-12 z-20 border border-amber-300/30">
+            <span className="text-black font-black text-lg italic">01</span>
+        </div>
+        
+        <div className="bg-[#242429] border border-white/5 rounded-[28px] p-6 pt-8 space-y-4 shadow-xl transition-all group-focus-within:border-amber-500/30">
           <div className="flex justify-between items-center">
-            <h2 className="text-sm font-bold text-white">Пополнение РФ/СНГ региона</h2>
+            <h2 className="text-[15px] font-bold text-white/90">Ваш аккаунт</h2>
             <button 
               onClick={() => setShowHelp(true)}
-              className="flex items-center gap-1 text-[#7c7cf5] font-bold text-xs hover:text-[#9c9cf5] active:scale-95 transition-all"
+              className="flex items-center gap-1 text-amber-500 font-bold text-xs hover:text-amber-400 active:scale-95 transition-all bg-amber-500/10 px-2 py-1 rounded-lg"
             >
               Где логин? <HelpCircle size={14} />
             </button>
@@ -134,51 +123,58 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             placeholder="Введите логин Steam"
-            className="w-full bg-[#1c1c21] border border-white/10 rounded-xl py-4 px-5 text-white outline-none focus:border-[#7c7cf5]/50 transition-all"
+            className="w-full bg-[#1c1c21] border border-white/10 rounded-xl py-4 px-5 text-white outline-none focus:border-amber-500/50 transition-all placeholder:text-white/20"
           />
 
-          <div className="space-y-1 px-1">
-            <p className="text-gray-400 text-[11px] font-medium">Страны доступные для пополнения:</p>
-            <p className="text-gray-500 text-[10px] leading-relaxed">
-              Russia, Belarus, Ukraine, Armenia, Azerbaijan, Georgia, Kazakhstan, Kyrgyzstan, Moldova, Tajikistan, Turkmenistan and Uzbekistan
+          <div className="space-y-1">
+            <p className="text-amber-500/60 text-[10px] font-black uppercase tracking-widest">Доступные регионы</p>
+            <p className="text-gray-500 text-[10px] leading-relaxed font-medium uppercase">
+              Russia, Belarus, Ukraine, Armenia, Azerbaijan, Georgia, Kazakhstan, Kyrgyzstan, Moldova, Tajikistan, Turkmenistan, Uzbekistan
             </p>
           </div>
         </div>
       </div>
 
       {/* БЛОК 02 - СУММА */}
-      <div className="relative">
-        <span className="absolute -top-2 -left-1 text-2xl font-black text-white italic">02</span>
-        <div className="bg-[#242429] border border-white/5 rounded-[28px] p-5 space-y-4 shadow-xl">
+      <div className="relative group">
+        {/* Красивый индикатор шага */}
+        <div className="absolute -top-3 -left-2 bg-gradient-to-br from-amber-400 to-orange-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-amber-900/40 transform -rotate-12 z-20 border border-amber-300/30">
+            <span className="text-black font-black text-lg italic">02</span>
+        </div>
+
+        <div className="bg-[#242429] border border-white/5 rounded-[28px] p-6 pt-8 space-y-4 shadow-xl transition-all group-focus-within:border-amber-500/30">
           <div className="flex justify-between items-center">
-            <h2 className="text-sm font-bold text-white">
-              {mode === 'receive' ? 'Сколько должно прийти (РУБ)' : 'На сколько пополнить (РУБ)'}
+            <h2 className="text-[15px] font-bold text-white/90 uppercase italic">
+              {mode === 'receive' ? 'Сумма зачисления' : 'Сумма пополнения'}
             </h2>
             <button 
                 onClick={() => setMode(m => m === 'receive' ? 'pay' : 'receive')}
-                className="p-1.5 bg-white/5 rounded-lg active:scale-75 transition-all"
+                className="p-2 bg-amber-500/10 rounded-xl active:scale-75 transition-all border border-amber-500/20"
             >
-                <ArrowLeftRight size={16} className="text-[#7c7cf5]" />
+                <ArrowLeftRight size={16} className="text-amber-500" />
             </button>
           </div>
 
-          <input 
-            type="number"
-            min="0"
-            value={amount}
-            onKeyDown={(e) => ["-", "e", "E"].includes(e.key) && e.preventDefault()}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0"
-            className="w-full bg-[#1c1c21] border border-white/10 rounded-xl py-4 px-5 text-white text-lg font-bold outline-none focus:border-[#7c7cf5]/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
+          <div className="relative">
+            <input 
+              type="number"
+              min="0"
+              value={amount}
+              onKeyDown={(e) => ["-", "e", "E"].includes(e.key) && e.preventDefault()}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              className="w-full bg-[#1c1c21] border border-white/10 rounded-xl py-4 px-5 text-white text-2xl font-black outline-none focus:border-amber-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder:text-white/5"
+            />
+            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-500 font-black text-sm uppercase italic opacity-50">RUB</span>
+          </div>
 
           {amount && (
-            <div className="bg-white/[0.03] rounded-xl p-3 flex justify-between items-center border border-white/5">
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Результат:</span>
-              <span className="text-xs font-black text-[#7c7cf5]">
+            <div className="bg-amber-500/5 rounded-xl p-4 flex justify-between items-center border border-amber-500/10 animate-in zoom-in-95 duration-300">
+              <span className="text-[10px] font-black text-amber-500/60 uppercase tracking-tighter">Итоговый расчет</span>
+              <span className="text-sm font-black text-white italic">
                 {mode === 'receive' 
-                    ? `К оплате: ~${calculateFinalPriceRub()} ₽` 
-                    : `Придет на баланс: ~$${calculateUsdForApi()}`}
+                    ? `К оплате: ${calculateFinalPriceRub()} ₽` 
+                    : `Придет: ~$${calculateUsdForApi()}`}
               </span>
             </div>
           )}
@@ -186,10 +182,10 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
       </div>
 
       {/* ПРАВИЛА */}
-      <div className="space-y-4 px-1 mt-2">
-        <div className="flex items-center gap-2 text-white font-bold text-sm">
-          <Info size={18} className="text-[#4e4ef2]" />
-          <span>Важные правила:</span>
+      <div className="space-y-4 px-1">
+        <div className="flex items-center gap-2 text-white/90 font-black text-xs uppercase tracking-tighter">
+          <Info size={18} className="text-amber-500" />
+          <span>Важные правила покупки</span>
         </div>
 
         <div className="space-y-3">
@@ -198,11 +194,11 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
             { id: 2, text: 'Никнейм не всегда совпадает с логином, нужно ввести именно логин.' },
             { id: 3, text: 'После успешной оплаты средства поступят до 10 минут, если они не пришли, то обратитесь в поддержку.' },
           ].map(rule => (
-            <div key={rule.id} className="flex gap-4 items-start">
-              <div className="w-8 h-8 shrink-0 bg-[#4e4ef2]/20 border border-[#4e4ef2]/40 rounded-lg flex items-center justify-center text-[#9c9cf5] font-black text-sm">
+            <div key={rule.id} className="flex gap-4 items-start group">
+              <div className="w-8 h-8 shrink-0 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-center text-amber-500 font-black text-sm shadow-inner transition-transform group-hover:scale-110">
                 {rule.id}
               </div>
-              <p className="text-gray-200 text-[13px] leading-snug pt-0.5">{rule.text}</p>
+              <p className="text-white/60 text-[13px] leading-snug pt-0.5 font-medium">{rule.text}</p>
             </div>
           ))}
         </div>
@@ -211,9 +207,10 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
       <button 
         disabled={!login || !amount || parseFloat(amount) <= 0}
         onClick={() => setShowCheckout(true)}
-        className="w-full bg-[#4e4ef2] hover:bg-[#5a5af5] disabled:opacity-30 py-5 rounded-2xl text-white font-black text-lg uppercase transition-all shadow-lg shadow-[#4e4ef2]/20 mt-2 active:scale-[0.98]"
+        className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-30 disabled:grayscale py-6 rounded-2xl text-black font-black text-xl uppercase transition-all shadow-lg shadow-amber-900/40 mt-2 active:scale-[0.98] relative overflow-hidden"
       >
-        Пополнить
+        <span className="relative z-10">Пополнить баланс</span>
+        <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
       </button>
     </div>
   );
