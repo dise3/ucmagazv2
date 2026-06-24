@@ -93,7 +93,7 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
           {/* ФОТО ИНСТРУКЦИЯ */}
           <div className="w-full overflow-hidden rounded-2xl border border-white/10">
             <img 
-              src="/steam-i.png" 
+              src="/steam_i.png" 
               alt="Steam Login Instruction" 
               className="w-full h-auto object-contain"
             />
