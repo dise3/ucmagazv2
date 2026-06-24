@@ -127,6 +127,16 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
             </button>
           </div>
 
+          <div className="relative flex items-center">
+            <input 
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Сумма"
+              className="w-full bg-[#1c1c21] border border-white/10 rounded-2xl py-5 px-6 text-white text-lg outline-none focus:border-[#7c7cf5]/50 transition-all"
+            />
+          </div>
+
           <div className="flex flex-col items-center gap-1">
             <p className="text-gray-500 text-[11px]">
                 {mode === 'receive' 
