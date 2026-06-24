@@ -77,7 +77,7 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
       {/* БЛОК 01 - ЛОГИН */}
       <div className="relative">
-        <span className="absolute -top-2 -left-1 text-2xl font-black text-white/5 italic">01</span>
+        <span className="absolute -top-2 -left-1 text-2xl font-black text-white italic">01</span>
         <div className="bg-[#242429] border border-white/5 rounded-[28px] p-5 space-y-4 shadow-xl">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold text-white">Пополнение РФ/СНГ региона</h2>
@@ -104,7 +104,7 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
       {/* БЛОК 02 - СУММА */}
       <div className="relative">
-        <span className="absolute -top-2 -left-1 text-2xl font-black text-white/5 italic">02</span>
+        <span className="absolute -top-2 -left-1 text-2xl font-black text-white italic">02</span>
         <div className="bg-[#242429] border border-white/5 rounded-[28px] p-5 space-y-4 shadow-xl">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold text-white">
