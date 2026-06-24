@@ -127,16 +127,26 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
             </button>
           </div>
 
-          <div className="relative flex items-center">
-            <input 
-              type="number"
-
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="Сумма"
-              className="w-full bg-[#1c1c21] border border-white/10 rounded-2xl py-5 px-6 text-white text-lg outline-none focus:border-[#7c7cf5]/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-          </div>
+<input 
+  type="number"
+  min="0" // Шаг 1: Ограничение на уровне HTML
+  value={amount}
+  onKeyDown={(e) => {
+    // Шаг 2: Запрещаем ввод знака минус, точки (если не нужны копейки) и буквы 'e'
+    if (["-", "e", "E"].includes(e.key)) {
+      e.preventDefault();
+    }
+  }}
+  onChange={(e) => {
+    // Шаг 3: Дополнительная подстраховка
+    const val = e.target.value;
+    if (val === "" || parseFloat(val) >= 0) {
+      setAmount(val);
+    }
+  }}
+  placeholder="Сумма"
+  className="w-full bg-[#1c1c21] border border-white/10 rounded-2xl py-5 px-6 text-white text-lg outline-none focus:border-[#7c7cf5]/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+/>
 
           <div className="flex flex-col items-center gap-1">
             <p className="text-gray-500 text-[11px]">
