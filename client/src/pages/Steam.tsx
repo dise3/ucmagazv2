@@ -130,10 +130,11 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
           <div className="relative flex items-center">
             <input 
               type="number"
+
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Сумма"
-              className="w-full bg-[#1c1c21] border border-white/10 rounded-2xl py-5 px-6 text-white text-lg outline-none focus:border-[#7c7cf5]/50 transition-all"
+              className="w-full bg-[#1c1c21] border border-white/10 rounded-2xl py-5 px-6 text-white text-lg outline-none focus:border-[#7c7cf5]/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
 
