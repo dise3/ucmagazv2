@@ -592,21 +592,31 @@ app.post('/api/steam/check-user', async (req, res) => {
             return res.status(400).json({ error: 'Логин не указан' });
         }
 
-        console.log(`[STEAM CHECK] Проверка логина: ${login}`);
+        // Адаптация под Python логику:
+        // Python: call("POST", "/api/v2/steam/check_user", json_body={"steam_id": "..."})
+        // Наш JS: call(метод, путь, параметры_запроса, тело_запроса)
+        const resp = await nsClient.call(
+            "POST", 
+            "/api/v2/steam/check_user", 
+            null, // params (Query string) - тут пусто
+            { "steam_id": login.trim() } // jsonBody (BODY) - как в Python примере
+        );
 
-        // Вызываем метод через ваш nsClient
-        const resp = await nsClient.call("POST", "/api/v2/steam/check_user", null, {
-            steam_id: login.trim()
+        // В Python примере: resp["accountStatus"]
+        // В JS: resp.accountStatus
+        console.log(`[STEAM CHECK] Логин: ${login}, Результат: ${resp.accountStatus}`);
+
+        res.json({ 
+            valid: resp.accountStatus // возвращаем true или false
         });
 
-        // Отправляем результат фронтенду
-        // resp.accountStatus — это true или false от NS API
-        res.json({ valid: resp.accountStatus });
-
     } catch (e: any) {
-        console.error('❌ Ошибка при проверке Steam логина:', e.message);
-        // Если API недоступно или ошибка в подписи, на всякий случай возвращаем false
-        res.status(500).json({ valid: false, error: 'Ошибка сервера при проверке' });
+        // Логируем ошибку для отладки
+        console.error('❌ Ошибка API при проверке Steam:', e.response?.data || e.message);
+        
+        // В случае ошибки (например, неверная подпись или сервер NS упал)
+        // возвращаем статус false, чтобы не дать оплатить невалидный логин
+        res.status(200).json({ valid: false, error: 'Технические работы на стороне провайдера' });
     }
 });
 // 5.5. ТЕСТ АКТИВАТОРА (ВРЕМЕННО)
