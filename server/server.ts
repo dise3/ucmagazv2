@@ -583,7 +583,32 @@ app.post('/api/activate-accounts', async (req, res) => {
         res.status(500).json({ error: 'Внутренняя ошибка' });
     }
 });
+// Эндпоинт для проверки существования логина Steam
+app.post('/api/steam/check-user', async (req, res) => {
+    try {
+        const { login } = req.body;
+        
+        if (!login) {
+            return res.status(400).json({ error: 'Логин не указан' });
+        }
 
+        console.log(`[STEAM CHECK] Проверка логина: ${login}`);
+
+        // Вызываем метод через ваш nsClient
+        const resp = await nsClient.call("POST", "/api/v2/steam/check_user", null, {
+            steam_id: login.trim()
+        });
+
+        // Отправляем результат фронтенду
+        // resp.accountStatus — это true или false от NS API
+        res.json({ valid: resp.accountStatus });
+
+    } catch (e: any) {
+        console.error('❌ Ошибка при проверке Steam логина:', e.message);
+        // Если API недоступно или ошибка в подписи, на всякий случай возвращаем false
+        res.status(500).json({ valid: false, error: 'Ошибка сервера при проверке' });
+    }
+});
 // 5.5. ТЕСТ АКТИВАТОРА (ВРЕМЕННО)
 app.get('/api/test-activate', async (req, res) => {
     const { uid, code, headless } = req.query as { uid: string, code: string, headless: string };
