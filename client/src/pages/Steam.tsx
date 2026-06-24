@@ -36,7 +36,7 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
     } else {
         // Если юзер ввел "Я хочу чтобы на баланс пришло 1000 рублей/10$"
         const base = currency === 'RUB' ? val : val * usdRate;
-        return Math.ceil(base * (1 + steamMarkup));
+        return Math.ceil(base * (1 + steamMarkup) + 0.0485);
     }
   };
 
