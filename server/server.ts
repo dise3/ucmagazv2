@@ -446,6 +446,7 @@ const getAdminMainKeyboard = () => ({
         [{ text: "📊 Наценки /list", callback_data: "adm_list" }, { text: "🛒 Управление товарами", callback_data: "admin_manage" }],
         [{ text: "📢 Рассылки", callback_data: "adm_broadcasts" }, { text: "💵 Прибыль", callback_data: "adm_profit" }],
         [{ text: "🔄 Активировать аккаунты", callback_data: "adm_activate_accounts" }, { text: "💸 Вывести средства", callback_data: "money" }],
+        [{ text: "🎮 Наценка Steam %", callback_data: "adm_steam_markup"}]
     ],
 });
 
@@ -1345,6 +1346,20 @@ app.post('/api/bot-webhook', async (req, res) => {
                     );
                     return;
                 }
+                if (state.action === 'await_steam_markup') {
+    const val = parseFloat(text.trim());
+    if (!isNaN(val)) {
+        // Делим на 100, чтобы в базе хранить 0.15 вместо 15
+        const decimalMarkup = val / 100;
+        const { error } = await supabase.from('settings').update({ steam_fee_percent: decimalMarkup }).eq('id', 1);
+        await sendTg(chatId, error ? `❌ Ошибка` : `✅ Наценка Steam установлена: ${val}%`, getAdminMainKeyboard());
+    } else {
+        await sendTg(chatId, '❌ Введите число');
+    }
+    adminStates.delete(chatId);
+    return;
+}
+
                 if (state.action === 'await_withdraw_payout') {
                     const payoutDetails = text.trim();
                     if (!payoutDetails) {
@@ -1969,6 +1984,13 @@ if (message && message.photo) {
             adminStates.set(currentChatId, { action: 'await_ticket_markup' });
             await editTg(currentChatId, msgId, `🎫 Введите маржу билетов в ₽:`, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_back" }]] });
         }
+
+        if (data === 'adm_steam_markup') {
+    adminStates.set(currentChatId, { action: 'await_steam_markup' });
+    await editTg(currentChatId, msgId, `🎮 Введите наценку для Steam в процентах (например, 15):`, { 
+        inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_back" }]] 
+    });
+}
 
         if (data === 'adm_prime') {
             const { data: s } = await supabase.from('settings').select('*').single();
