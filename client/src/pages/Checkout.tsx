@@ -374,8 +374,8 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
             </div>
             {paymentMethod == 'card' && (
               <div className='text-right'>
-                <span className="text-[10px] text-white/20 font-bold block">Включая комиссию</span>
-                <span className="text-[10px] text-white/20 font-bold block">7.1%</span>
+                <span className="text-[10px] text-white/20 font-bold block">комиссия</span>
+                <span className="text-[10px] text-white/20 font-bold block">+2.25%</span>
               </div>
             )}
         </div>
