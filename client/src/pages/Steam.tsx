@@ -62,8 +62,8 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
   const calculateFinalPriceRub = () => {
     const val = parseFloat(amount) || 0;
-    if (mode === 'pay') return Math.ceil(val);
-    return Math.ceil(val * (1 + steamMarkup) * paymentCommision + 1);
+    if (mode === 'pay') return val;
+    return Math.ceil(val * (1 + steamMarkup) * paymentCommision);
   };
 
   const calculateUsdForApi = () => {
