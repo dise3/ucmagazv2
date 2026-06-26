@@ -372,10 +372,12 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
                 <span className="text-[11px] font-black text-white/30 uppercase tracking-widest">К оплате:</span>
                 <span className="text-3xl font-black text-white tracking-tight">{getTotalPrice().toFixed(2)} <span className="text-amber-400">₽</span></span>
             </div>
-            <div className="text-right">
+            {paymentMethod == 'card' && (
+              <div className='text-right'>
                 <span className="text-[10px] text-white/20 font-bold block">Включая комиссию</span>
-                <span className="text-[10px] text-white/20 font-bold block">{paymentMethod === 'sbp' ? '4.85%' : '7.1%'}</span>
-            </div>
+                <span className="text-[10px] text-white/20 font-bold block">7.1%</span>
+              </div>
+            )}
         </div>
         
         <button 
