@@ -14,11 +14,11 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
   const [settings, setSettings] = useState<any>(null);
   const [showHelp, setShowHelp] = useState(false);
 
-  // Состояния проверки логина
   const [isValidating, setIsValidating] = useState(false);
   const [loginStatus, setLoginStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
 
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
+  const MIN_AMOUNT = 50; // Минимальная сумма
 
   useEffect(() => {
     fetch(`${VITE_API_NGROK}/api/settings`, {
@@ -26,7 +26,6 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
     }).then(res => res.json()).then(setSettings);
   }, []);
 
-  // Сбрасываем статус при изменении текста в поле
   const handleLoginChange = (val: string) => {
     setLogin(val);
     if (loginStatus !== 'idle') setLoginStatus('idle');
@@ -34,7 +33,6 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
   const handleCheckUser = async () => {
     if (!login.trim() || isValidating) return;
-    
     setIsValidating(true);
     try {
       const res = await fetch(`${VITE_API_NGROK}/api/steam/check-user`, {
@@ -44,11 +42,8 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
       });
       const data = await res.json();
       setLoginStatus(data.valid ? 'valid' : 'invalid');
-      
-      // Haptic feedback
       const tg = (window as any).Telegram?.WebApp?.HapticFeedback;
       if (tg) tg.notificationOccurred(data.valid ? 'success' : 'error');
-      
     } catch (e) {
       setLoginStatus('invalid');
     } finally {
@@ -62,15 +57,23 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
 
   const calculateFinalPriceRub = () => {
     const val = parseFloat(amount) || 0;
-    if (mode === 'pay') return val;
+    if (mode === 'pay') return Math.ceil(val);
     return Math.ceil(val * (1 + steamMarkup) * paymentCommision);
   };
 
-  const calculateUsdForApi = () => {
+  const calculateReceiveRub = () => {
     const val = parseFloat(amount) || 0;
-    if (mode === 'pay') return (val / paymentCommision / (1 + steamMarkup) / usdRate).toFixed(2);
-    return (val / usdRate).toFixed(2);
+    if (mode === 'receive') return Math.floor(val);
+    const pureRub = (val / paymentCommision) / (1 + steamMarkup);
+    return Math.floor(pureRub);
   };
+
+  const calculateUsdForApi = () => {
+    const receiveRub = calculateReceiveRub();
+    return (receiveRub / usdRate).toFixed(2);
+  };
+
+  const isAmountTooLow = amount !== '' && parseFloat(amount) < MIN_AMOUNT;
 
   if (showCheckout) {
     return (
@@ -178,15 +181,27 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
               onKeyDown={(e) => ["-", "e", "E"].includes(e.key) && e.preventDefault()}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0"
-              className="w-full bg-[#1c1c21] border border-white/10 rounded-xl py-4 px-5 text-white text-2xl font-black outline-none focus:border-amber-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className={`w-full bg-[#1c1c21] border-2 rounded-xl py-4 px-5 text-white text-2xl font-black outline-none transition-all focus:border-amber-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isAmountTooLow ? 'border-red-500/50' : 'border-white/10'}`}
             />
             <span className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-500 font-black text-sm uppercase italic opacity-50">RUB</span>
           </div>
 
-          {amount && (
+          {/* Предупреждение о минимальной сумме */}
+          {isAmountTooLow && (
+            <div className="flex items-center gap-1.5 text-red-500 px-1 animate-in slide-in-from-top-1">
+                <AlertCircle size={14} />
+                <span className="text-[11px] font-black uppercase tracking-tighter">Минимальная сумма — {MIN_AMOUNT} ₽</span>
+            </div>
+          )}
+
+          {amount && !isAmountTooLow && (
             <div className="bg-amber-500/5 rounded-xl p-4 flex justify-between items-center border border-amber-500/10 animate-in zoom-in-95 duration-300">
               <span className="text-[10px] font-black text-amber-500/60 uppercase tracking-tighter">Итоговый расчет</span>
-              <span className="text-sm font-black text-white italic">{mode === 'receive' ? `К оплате: ${calculateFinalPriceRub()} ₽` : `Придет: ~$${calculateUsdForApi()}`}</span>
+              <span className="text-sm font-black text-white italic">
+                {mode === 'receive' 
+                    ? `К оплате: ${calculateFinalPriceRub()} ₽` 
+                    : `Придет на баланс: ~${calculateReceiveRub()} ₽`}
+              </span>
             </div>
           )}
         </div>
@@ -210,11 +225,15 @@ const Steam: React.FC<SteamProps> = ({ onBack }) => {
       </div>
 
       <button 
-        disabled={!login || !amount || parseFloat(amount) <= 0 || loginStatus !== 'valid'}
+        disabled={!login || !amount || parseFloat(amount) < MIN_AMOUNT || loginStatus !== 'valid'}
         onClick={() => setShowCheckout(true)}
         className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-30 disabled:grayscale py-6 rounded-2xl text-black font-black text-xl uppercase transition-all shadow-lg shadow-amber-900/40 mt-2 active:scale-[0.98]"
       >
-        {loginStatus === 'valid' ? 'Пополнить баланс' : 'Сначала проверьте логин'}
+        {loginStatus !== 'valid' 
+          ? 'Проверьте логин' 
+          : isAmountTooLow 
+            ? `Мин. сумма ${MIN_AMOUNT} ₽` 
+            : 'Пополнить баланс'}
       </button>
     </div>
   );
