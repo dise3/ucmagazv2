@@ -151,9 +151,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     if (pack.type === 'steam_topup') {
       const rate = settings.usd_rate_store || settings.usd_rate || 95;
       // Берем steam_fee_percent из БД, если нет - 15% (0.15)
-      const steamFee = settings.steam_fee_percent ?? 0.15; 
+      const steamFee = settings.steam_fee_percent;
       const baseRub = (pack.amount || 0) * rate;
-      const rubWithMarkup = Math.ceil(baseRub * (1 + steamFee));
+      const rubWithMarkup = (baseRub * (1 + steamFee));
       return calculatePriceWithCommission(rubWithMarkup, paymentMethod);
     }
 
