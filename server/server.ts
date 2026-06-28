@@ -932,7 +932,7 @@ app.post('/api/payment-callback', async (req, res) => {
                 console.error('[treasury_child] recordChildOrderRevenue', e);
             }
 
-            // --- НОВЫЙ БЛОК: ОБРАБОТКА STEAM И PLAYSTATION (NS API) ---
+ // --- ОБРАБОТКА STEAM И PLAYSTATION (NS API) ---
             if (order.order_type === 'steam_topup' || order.order_type === 'ps_gift') {
                 try {
                     console.log(`[NS API] Обработка заказа #${order.id} (${order.order_type})`);
@@ -941,23 +941,22 @@ app.post('/api/payment-callback', async (req, res) => {
                     let fields: any[];
 
                     if (order.order_type === 'steam_topup') {
-                        // --- ЛОГИКА STEAM (Пополнение по логину) ---
-                        // Используем ID 1 из вашего списка для пополнения Steam
+                        // --- ЛОГИКА STEAM ---
                         serviceId = 1; 
                         fields = [
-                            { key: "account", value: order.uid_player }, // Логин Steam
-                            { key: "amount", value: order.amount_uc }    // Сумма в USD
+                            { key: "account", value: String(order.uid_player).trim() }, // Строка
+                            { key: "amount", value: Number(order.amount_uc) }           // Число (USD)
                         ];
                     } else {
-                        // --- ЛОГИКА PLAYSTATION (Выдача кода) ---
-                        // Service ID берется из amount_uc (который вы передали при создании заказа)
+                        // --- ЛОГИКА PLAYSTATION ---
                         serviceId = Number(order.amount_uc); 
                         fields = [{ key: "quantity", value: 1 }];
                     }
 
-                    // 1. Создаем заказ в NS API
+                    // ФИКС: Обязательно вызываем функцию со скобками ()
+                    const nsCustomId = uuidv4(); 
 
-                    const nsCustomId = uuidv4
+                    // 1. Создаем заказ в NS API
                     await nsClient.call("POST", "/api/v2/create_order", null, {
                         service_id: serviceId,
                         custom_id: nsCustomId,
@@ -970,8 +969,7 @@ app.post('/api/payment-callback', async (req, res) => {
                     });
 
                     if (payResult.status === 'completed') {
-                        if (order.order_type === 'ps_gift' && payResult.pins) {
-                            // Если это код PlayStation
+                        if (order.order_type === 'ps_gift' && payResult.pins && payResult.pins.length > 0) {
                             const pinCode = payResult.pins[0];
                             await sendTg(order.user_chat_id, 
                                 `🎁 <b>Ваш код PlayStation готов!</b>\n\n` +
@@ -979,33 +977,33 @@ app.post('/api/payment-callback', async (req, res) => {
                                 `<i>Активируйте его в настройках вашего аккаунта PS Store.</i>`
                             );
                         } else {
-                            // Если это пополнение Steam
                             await sendTg(order.user_chat_id, 
-                                `✅ <b>Баланс Steam успешно пополнен!</b>\n\n` +
+                                `✅ <b>Steam успешно пополнен!</b>\n\n` +
                                 `Логин: <code>${order.uid_player}</code>\n` +
                                 `Сумма: $${order.amount_uc}`
                             );
                         }
 
-                        // Ставим статус "Выполнено" в Supabase
                         await supabase.from('orders').update({ status: 'completed' }).eq('id', order.id);
                         await sendTg(ADMIN_CHAT_ID, `✅ Заказ #${order.id} успешно выдан через NS API.`);
 
                     } else if (payResult.status === 'in_progress') {
                         await sendTg(order.user_chat_id, `⏳ Ваш заказ находится в обработке на стороне провайдера. Мы пришлем уведомление сразу после активации.`);
+                    } else {
+                        // Если статус 'insufficient' или другой
+                        throw new Error(`Статус API: ${payResult.status}`);
                     }
                     
-                    return; // Выходим, так как заказ обработан через NS API
-} catch (e: any) {
-                    // 1. Извлекаем детальную ошибку от NS API
-                    const errorData = e.response?.data;
-                    console.error('❌ ПОЛНЫЙ ОТВЕТ ОБ ОШИБКЕ:', JSON.stringify(errorData, null, 2));
+                    return; 
 
-                    // 2. Формируем понятный текст для админа
+                } catch (e: any) {
+                    // Распаковка детальной ошибки
+                    const errorData = e.response?.data;
+                    console.error('❌ ДЕТАЛЬНАЯ ОШИБКА NS API:', JSON.stringify(errorData, null, 2));
+
                     let errorMessage = 'Неизвестная ошибка';
                     if (errorData) {
-                        // NS API обычно возвращает ошибку в поле detail
-                        errorMessage = typeof errorData === 'string' ? errorData : (errorData.detail || errorData.message || JSON.stringify(errorData));
+                        errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData);
                     } else {
                         errorMessage = e.message;
                     }
