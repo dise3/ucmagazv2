@@ -994,11 +994,13 @@ app.post('/api/payment-callback', async (req, res) => {
                     
                     return; // Выходим, так как заказ обработан через NS API
                 } catch (e: any) {
-                    console.error('❌ Ошибка автовыдачи NS:', e.message);
+                    console.error('❌ Ошибка автовыдачи NS:', e.response?.data || e.message);
+
+                    const errorDetail = e.response?.data?.detail || e.message;
                     await sendTg(ADMIN_CHAT_ID, 
                         `❌ <b>ОШИБКА АВТОВЫДАЧИ #${order.id}</b>\n` +
                         `Тип: ${order.order_type}\n` +
-                        `Причина: ${e.message}\n\n` +
+                        `Причина: ${errorDetail}\n\n` +
                         `⚠️ Требуется ручная проверка/выдача!`
                     );
                     return; // Прекращаем выполнение, чтобы не сработали другие условия
