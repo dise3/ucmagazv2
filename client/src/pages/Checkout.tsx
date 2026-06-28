@@ -116,7 +116,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       const rate = settings.usd_rate_store || settings.usd_rate || 95;
       const steamFee = settings.steam_fee_percent ?? 0.15;
       const baseRubWithMarkup = (pack.amount || 0) * rate * (1 + steamFee);
-      return Math.ceil(baseRubWithMarkup * (1 + comm) + 1);
+      return Math.floor(baseRubWithMarkup * (1 + comm) + 1);
     }
     const base = (pack.price || 0) / (1 + COMMISSION_SBP); 
     return Math.ceil(base * (1 + comm));
