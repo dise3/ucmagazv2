@@ -1,27 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, HelpCircle, CheckCircle2, X, Loader2, Home } from 'lucide-react';
 
-// Компонент оверлея статуса оплаты
+// --- КОМПОНЕНТ СТАТУСА ОПЛАТЫ ---
 const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; apiBase: string; type?: string }> = ({ orderId, onClose, apiBase, type }) => {
   const [status, setStatus] = useState<'pending' | 'paid'>('pending');
 
   useEffect(() => {
+    console.log("[StatusOverlay] Начало отслеживания заказа:", orderId);
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${apiBase}/api/check-status/${orderId}`, {
           headers: { 'ngrok-skip-browser-warning': 'true' }
         });
         const data = await res.json();
+        console.log("[StatusOverlay] Ответ сервера:", data);
+        
         if (data.status === 'paid' || data.status === 'completed') {
           setStatus('paid');
           clearInterval(interval);
-          // Безопасный вызов HapticFeedback
           const tg = (window as any).Telegram?.WebApp;
-          if (tg?.HapticFeedback) {
-            tg.HapticFeedback.notificationOccurred('success');
-          }
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
         }
-      } catch (e) { console.error("Status check error:", e); }
+      } catch (e) { 
+        console.error("[StatusOverlay] Ошибка проверки статуса:", e); 
+      }
     }, 3000);
     return () => clearInterval(interval);
   }, [orderId, apiBase]);
@@ -70,13 +72,12 @@ interface CheckoutProps {
     is_code?: boolean; 
     type?: 'uc' | 'pp' | 'tickets' | 'skin' | 'prime' | 'prime_plus' | 'login' | 'steam_topup' | 'ps_gift';
     title?: string;
-    months?: number;
     uid?: string;
-    items?: Array<{ id: number; amount: number; price: number; quantity: number }>;
   };
   onBack: () => void;
 }
 
+// --- ОСНОВНОЙ КОМПОНЕНТ ---
 const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   const [paymentMethod, setPaymentMethod] = useState<'sbp' | 'card'>('sbp');
   const [uid, setUid] = useState(pack.uid || '');
@@ -88,14 +89,20 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
 
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
   
-  // БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ TELEGRAM
+  // Безопасное получение WebApp
   const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
 
   useEffect(() => {
+    console.log("[Checkout] Монтирование. Telegram WebApp:", tg);
+    console.log("[Checkout] Данные пользователя (initDataUnsafe):", tg?.initDataUnsafe);
+
     fetch(`${VITE_API_NGROK}/api/settings`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then(res => res.json())
-      .then(setSettings)
-      .catch(console.error);
+      .then(data => {
+        console.log("[Checkout] Настройки загружены:", data);
+        setSettings(data);
+      })
+      .catch(err => console.error("[Checkout] Ошибка загрузки настроек:", err));
   }, [VITE_API_NGROK]);
 
   const COMMISSION_SBP = 0.0485;
@@ -111,12 +118,13 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       const baseRubWithMarkup = (pack.amount || 0) * rate * (1 + steamFee);
       return Math.ceil(baseRubWithMarkup * (1 + comm) + 1);
     }
-
     const base = (pack.price || 0) / (1 + COMMISSION_SBP); 
     return Math.ceil(base * (1 + comm));
   };
 
   const handlePayment = async () => {
+    console.log("[HandlePayment] Клик по оплате");
+    
     const currentUid = uid ? uid.trim() : (pack.uid ? pack.uid.trim() : '');
     if (!pack.is_code && !currentUid) {
       setError(pack.type === 'steam_topup' ? 'Введите логин Steam' : 'Введите UID');
@@ -126,46 +134,67 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     setIsLoading(true);
     setError('');
     
-    // Использование Опциональной цепочки (?.) предотвращает ошибку, если tg или user равны null
-    const user = tg?.initDataUnsafe?.user;
+    // --- ЗАЩИЩЕННЫЙ БЛОК ПОЛУЧЕНИЯ ДАННЫХ ---
+    console.log("[HandlePayment] Проверка tg.initDataUnsafe.user...");
     
-    const user_chat_id = user?.id || 0;
-    const buyer_first_name = user?.first_name || 'Web';
-    const buyer_last_name = user?.last_name || 'User';
+    // Используем опциональную цепочку ?. везде
+    const userData = tg?.initDataUnsafe?.user;
+    
+    // Если userData === null, ошибки не будет, сработают значения по умолчанию
+    const user_chat_id = userData?.id || 0; 
+    const buyer_first_name = userData?.first_name || 'Web';
+    const buyer_last_name = userData?.last_name || 'User';
+
+    console.log("[HandlePayment] Итоговые данные для отправки:", {
+      user_chat_id,
+      buyer_first_name,
+      buyer_last_name,
+      uid: currentUid
+    });
 
     try {
       const totalPrice = getTotalPrice();
+      const payload = {
+        uid: currentUid,
+        amount: pack.amount || 0,
+        price: totalPrice,
+        method_slug: paymentMethod,
+        user_chat_id: user_chat_id,
+        buyer_first_name: buyer_first_name,
+        buyer_last_name: buyer_last_name,
+        type: pack.type || 'uc',
+        is_code: pack.is_code || false
+      };
+
+      console.log("[HandlePayment] Отправка POST запроса на /api/create-payment...");
+      
       const response = await fetch(`${VITE_API_NGROK}/api/create-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-        body: JSON.stringify({
-          uid: currentUid,
-          amount: pack.amount || 0,
-          price: totalPrice,
-          method_slug: paymentMethod,
-          user_chat_id: user_chat_id,
-          buyer_first_name: buyer_first_name,
-          buyer_last_name: buyer_last_name,
-          type: pack.type || 'uc',
-          is_code: pack.is_code || false
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
+      console.log("[HandlePayment] Ответ от /api/create-payment:", data);
+
       if (!response.ok) throw new Error(data.error || 'Ошибка сервера');
 
       if (data.url) {
         setActiveOrderId(data.order_id);
-        // Если открыто в Telegram, используем его метод для ссылок
         if (tg?.openLink) {
+            console.log("[HandlePayment] Открытие ссылки через tg.openLink");
             tg.openLink(data.url);
         } else {
+            console.log("[HandlePayment] Открытие ссылки через window.location");
             window.location.href = data.url;
         }
       }
     } catch (err: any) {
+      console.error("[HandlePayment] КРИТИЧЕСКАЯ ОШИБКА:", err);
       setError(err.message || 'Ошибка сети');
-    } finally { setIsLoading(false); }
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   return (
@@ -193,13 +222,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
 
       {/* Header */}
       <div className="flex items-center gap-4 pt-6">
-        <button 
-          onClick={() => { 
-            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); 
-            onBack(); 
-          }} 
-          className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/30 active:scale-90 transition-all"
-        >
+        <button onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); onBack(); }} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/30 active:scale-90 transition-all">
           <ChevronLeft size={20} />
         </button>
         <h1 className="text-2xl font-black uppercase italic">Оформление</h1>
@@ -223,12 +246,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
             <label className="text-[12px] font-black uppercase tracking-widest">{pack.type === 'steam_topup' ? 'Логин Steam' : 'Игровой UID'}</label>
             <button onClick={() => setShowHelp(true)} className="flex items-center gap-1 text-[11px] text-amber-400 font-bold">Где найти? <HelpCircle size={14} /></button>
           </div>
-          <input 
-            value={uid} 
-            onChange={(e) => setUid(e.target.value)} 
-            placeholder={pack.type === 'steam_topup' ? "ivan_2005" : "Введите ID"} 
-            className="w-full bg-white/5 border-2 border-white/10 rounded-2xl py-5 px-6 text-white font-black text-lg outline-none focus:border-amber-500/50 transition-all" 
-          />
+          <input value={uid} onChange={(e) => setUid(e.target.value)} placeholder={pack.type === 'steam_topup' ? "ivan_2005" : "Введите ID"} className="w-full bg-white/5 border-2 border-white/10 rounded-2xl py-5 px-6 text-white font-black text-lg outline-none focus:border-amber-500/50 transition-all" />
         </div>
       )}
 
@@ -237,14 +255,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
         <label className="text-[11px] font-black text-white/30 uppercase tracking-widest text-center block">Метод оплаты</label>
         <div className="grid grid-cols-2 gap-4">
           {(['sbp', 'card'] as const).map((m) => (
-            <button 
-              key={m} 
-              onClick={() => { 
-                if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); 
-                setPaymentMethod(m); 
-              }} 
-              className={`h-20 rounded-[24px] border-2 transition-all flex items-center justify-center relative ${paymentMethod === m ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-white/5 border-white/5 opacity-60'}`}
-            >
+            <button key={m} onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); setPaymentMethod(m); }} className={`h-20 rounded-[24px] border-2 transition-all flex items-center justify-center relative ${paymentMethod === m ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-white/5 border-white/5 opacity-60'}`}>
               <img src={m === 'sbp' ? '/sbp.jpg' : '/card.jpg'} className="h-8 object-contain" alt={m} />
               {paymentMethod === m && <div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-1 shadow-lg"><CheckCircle2 size={14} className="text-black" strokeWidth={4} /></div>}
             </button>
@@ -260,18 +271,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
                 <span className="text-[11px] font-black text-white/30 uppercase tracking-widest">К оплате:</span>
                 <span className="text-3xl font-black tracking-tight">{getTotalPrice().toFixed(2)} <span className="text-amber-400">₽</span></span>
             </div>
-            {paymentMethod === 'card' && (
-              <div className='text-right'>
-                <span className="text-[10px] text-white/20 font-bold block italic leading-tight">включая комиссию</span>
-                <span className="text-[10px] text-white/20 font-bold block">+2.25%</span>
-              </div>
-            )}
         </div>
         <button 
-          onClick={() => { 
-            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy'); 
-            handlePayment(); 
-          }} 
+          onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy'); handlePayment(); }} 
           disabled={isLoading || (!pack.is_code && !uid.trim())} 
           className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-[24px] font-black text-black text-xl uppercase transition-all active:scale-[0.97] disabled:opacity-50 shadow-xl shadow-amber-900/20"
         >
