@@ -783,7 +783,7 @@ app.post('/api/create-payment', async (req, res) => {
 
         if (user_chat_id) {
             await addBroadcastUser(
-                user_chat_id,
+                user_chat_id || 0,
                 undefined,
                 buyer_first_name,
                 buyer_last_name
