@@ -966,7 +966,7 @@ app.post('/api/payment-callback', async (req, res) => {
                     
                     // 2. Оплачиваем заказ (списание баланса NS)
                     const payResult = await nsClient.call("POST", "/api/v2/pay_order", null, {
-                        custom_id: `order_${order.id}`
+                        custom_id: nsCustomId
                     });
 
                     if (payResult.status === 'completed') {
