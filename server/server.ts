@@ -765,8 +765,7 @@ app.get('/api/promo-products', async (req, res) => {
 
 // 4. Создание платежа
 app.post('/api/create-payment', async (req, res) => {
-    console.log("хапрос пришел")
-    console.log(req.body)
+    console.log("Запрос на оплату пришел:", req.body);
     try {
         const {
             uid,
@@ -784,14 +783,19 @@ app.post('/api/create-payment', async (req, res) => {
         } = req.body;
 
         if (user_chat_id) {
-            await addBroadcastUser(
-                user_chat_id || 0,
-                undefined,
-                buyer_first_name,
-                buyer_last_name
-            );
+            try {
+                await addBroadcastUser(
+                    user_chat_id || 0,
+                    undefined,
+                    buyer_first_name,
+                    buyer_last_name
+                );
+            } catch (err) {
+                console.error("Ошибка при добавлении пользователя в рассылку:", err);
+            }
         }
 
+        // Вставка в базу данных
         const { data: order, error } = await supabase
             .from('orders')
             .insert([{ 
@@ -808,11 +812,23 @@ app.post('/api/create-payment', async (req, res) => {
                 account_password: account_password || null,
                 game_nickname: game_nickname || null,
             }])
-            .select().single();
+            .select()
+            .single();
         
-        console.log('Order created:', { id: order.id, amount_uc: order.amount_uc, type: order.order_type });
-        
-        if (error) throw error;
+        // 1. СНАЧАЛА проверяем, нет ли ошибки от Supabase
+        if (error) {
+            console.error('Ошибка Supabase при создании заказа:', error);
+            return res.status(400).json({ error: `Ошибка БД: ${error.message}` });
+        }
+
+        // 2. Проверяем, что объект order вообще существует
+        if (!order) {
+            console.error('Заказ не был возвращен из базы данных');
+            return res.status(500).json({ error: 'Не удалось создать запись в базе данных' });
+        }
+
+        // 3. Теперь безопасно логируем
+        console.log('Order created successfully:', { id: order.id, amount_uc: order.amount_uc });
 
         let description = '';
         if (type === 'pp') {
@@ -827,13 +843,11 @@ app.post('/api/create-payment', async (req, res) => {
             description = `Покупка подписки Prime Gaming Plus`;
         } else if (type === 'login') {
             description = `Пополнение по входу ${amount} UC`;
-        } 
-        else if (type === 'steam_topup') {
+        } else if (type === 'steam_topup') {
             description = `Пополнение Steam (логин: ${uid}) на $${amount}`;
         } else if (type === 'ps_gift') {
             description = `Подарочная карта PlayStation (ID товара: ${amount})`;
-} 
-        else {
+        } else {
             description = is_code ? `Покупка кода на ${amount} UC` : `Пополнение ${amount} UC для ID: ${uid}`;
         }
 
@@ -843,19 +857,27 @@ app.post('/api/create-payment', async (req, res) => {
             description: description,
             metadata: { 
                 order_id: order.id,
-                notification_url: `${BACKEND_URL}/api/payment-callback`
-    }
+                notification_url: `${process.env.BACKEND_URL || 'ВАШ_URL'}/api/payment-callback`
+            }
         };
 
+        // Инициализация платежа
         const response = await axios.post('https://codeepay.ru/initiate_payment', paymentData, {
             headers: { 'X-Api-Key': process.env.CODEEPAY_API_KEY }
         });
+
         console.log('✅ Payment response from codeepay:', response.data);
-        await supabase.from('orders').update({ payment_id: response.data.order_id }).eq('id', order.id);
+
+        // Обновляем payment_id в заказе
+        await supabase
+            .from('orders')
+            .update({ payment_id: String(response.data.order_id) })
+            .eq('id', order.id);
+
         res.json({ url: response.data.url, order_id: order.id });
 
-    } catch (e: any) { 
-        console.error('Payment Error:', e.message); 
+    } catch (e : any) { 
+        console.error('Payment Error (General):', e.message); 
         res.status(500).json({ error: e.message }); 
     }
 });
