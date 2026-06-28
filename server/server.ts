@@ -765,7 +765,7 @@ app.get('/api/promo-products', async (req, res) => {
 
 // 4. Создание платежа
 app.post('/api/create-payment', async (req, res) => {
-
+    console.log("хапрос пришел")
     console.log(req.body)
     try {
         const {
