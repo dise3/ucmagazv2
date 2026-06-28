@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 console.log('dotenv loaded');
+import { v4 as uuidv4 } from 'uuid';
 
 import express from 'express';
 import { activateSingleCode } from './activator.ts';
@@ -955,9 +956,11 @@ app.post('/api/payment-callback', async (req, res) => {
                     }
 
                     // 1. Создаем заказ в NS API
+
+                    const nsCustomId = uuidv4
                     await nsClient.call("POST", "/api/v2/create_order", null, {
                         service_id: serviceId,
-                        custom_id: `order_${order.id}`,
+                        custom_id: nsCustomId,
                         fields: fields
                     });
                     
