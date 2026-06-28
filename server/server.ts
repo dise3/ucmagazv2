@@ -797,7 +797,7 @@ app.post('/api/create-payment', async (req, res) => {
                 amount_uc: amount, 
                 price_rub: price, 
                 status: 'pending', 
-                user_chat_id,
+                user_chat_id: user_chat_id || 0,
                 is_code_order: !!is_code, 
                 order_type: type || 'uc',
                 buyer_first_name: buyer_first_name || null,
