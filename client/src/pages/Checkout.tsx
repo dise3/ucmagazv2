@@ -24,7 +24,7 @@ const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; api
   }, [orderId, apiBase]);
 
   const getSuccessMessage = () => {
-    if (type === 'steam_topup') return 'Средства будут зачислены на баланс Steam в течение 5-15 минут.';
+    if (type === 'steam_topup') return 'Средства будут зачислены на ваш баланс Steam в течение 5-15 минут.';
     if (type === 'ps_gift') return 'Код активации придет в чат-бот в ближайшее время.';
     return 'Ваш заказ будет выполнен в течение 5-15 минут.';
   };
@@ -38,10 +38,7 @@ const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; api
               <div className="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full" />
               <Loader2 className="w-20 h-20 text-amber-500 animate-spin mx-auto relative z-10" strokeWidth={3} />
             </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">Ожидаем оплату</h2>
-              <p className="text-white/50 font-medium text-sm leading-relaxed">Завершите платеж в открывшемся окне. Статус обновится автоматически.</p>
-            </div>
+            <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">Ожидаем оплату</h2>
           </>
         ) : (
           <>
@@ -49,10 +46,8 @@ const PaymentStatusOverlay: React.FC<{ orderId: string; onClose: () => void; api
               <div className="absolute inset-0 bg-green-500/20 blur-3xl rounded-full" />
               <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto relative z-10 animate-bounce" strokeWidth={3} />
             </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">Успешно!</h2>
-              <p className="text-white/50 font-medium text-sm leading-relaxed">{getSuccessMessage()}</p>
-            </div>
+            <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">Успешно!</h2>
+            <p className="text-white/50 font-medium text-sm leading-relaxed">{getSuccessMessage()}</p>
           </>
         )}
         <button onClick={onClose} className="w-full bg-white/10 hover:bg-white/20 py-5 rounded-2xl text-white font-black uppercase flex items-center justify-center gap-3 border border-white/10">
@@ -74,7 +69,7 @@ interface CheckoutProps {
     title?: string;
     months?: number;
     uid?: string;
-    items?: Array<{ id: number; amount: number; price: number; quantity: number }>;
+    items?: Array<{ id: number; amount: number; price: number; quantity: number }>; // Фикс ошибки TS
   };
   onBack: () => void;
 }
@@ -82,20 +77,16 @@ interface CheckoutProps {
 const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   const [paymentMethod, setPaymentMethod] = useState<'sbp' | 'card'>('sbp');
   const [uid, setUid] = useState(pack.uid || '');
-  const [username, setUsername] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
   
-  // Безопасное получение объекта WebApp
+  // Безопасное получение Telegram
   const tg = (window as any).Telegram?.WebApp;
   const isTelegramApp = !!tg?.initDataUnsafe?.user;
-
   const VITE_API_NGROK = import.meta.env.VITE_API_NGROK;
-  const isMultiCode = !!(pack.items && pack.items.length > 0);
-  const items = pack.items || [];
 
   useEffect(() => {
     fetch(`${VITE_API_NGROK}/api/settings`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
@@ -108,27 +99,24 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
   const getTotalPrice = (): number => {
     if (!settings) return pack.price || 0;
 
+    // 1. Логика Steam (соответствует странице ввода)
     if (pack.type === 'steam_topup') {
       const rate = settings.usd_rate_store || settings.usd_rate || 95;
       const steamFee = settings.steam_fee_percent ?? 0.15;
-      const baseRubWithMarkup = (pack.amount || 0) * rate * (1 + steamFee);
+      // В режиме receive на странице Steam была формула: base * Markup * Commision + 1
       const comm = paymentMethod === 'sbp' ? COMMISSION_SBP : COMMISSION_CARD;
-      return Math.ceil(baseRubWithMarkup * (1 + comm));
+      const baseRubWithMarkup = (pack.amount || 0) * rate * (1 + steamFee);
+      return Math.ceil(baseRubWithMarkup * (1 + comm) + 1);
     }
 
+    // 2. Логика PS / Skins / Prime
     if (pack.type === 'ps_gift' || pack.type === 'skin' || pack.type === 'prime' || pack.type === 'prime_plus') {
        const comm = paymentMethod === 'sbp' ? COMMISSION_SBP : COMMISSION_CARD;
        const base = (pack.price || 0) / (1 + COMMISSION_SBP);
        return Math.ceil(base * (1 + comm));
     }
 
-    if (isMultiCode) {
-      const total = items.reduce((s, i) => s + (i.price * i.quantity), 0);
-      const base = total / (1 + COMMISSION_SBP);
-      const comm = paymentMethod === 'sbp' ? COMMISSION_SBP : COMMISSION_CARD;
-      return Math.ceil(base * (1 + comm));
-    }
-
+    // 3. UC (Промокоды или пакеты)
     const comm = paymentMethod === 'sbp' ? COMMISSION_SBP : COMMISSION_CARD;
     return Math.ceil((pack.price || 0) * (1 + (settings?.fee_percent || 0)) / (1 + COMMISSION_SBP) * (1 + comm));
   };
@@ -143,11 +131,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     setIsLoading(true);
     setError('');
     
-    // БЕЗОПАСНЫЙ ДОСТУП К ДАННЫМ ТЕЛЕГРАМА (Фикс ошибки null reading id)
+    // ФИКС ОШИБКИ: Безопасное получение ID (если null -> 0)
     const telegramUser = tg?.initDataUnsafe?.user || null;
-    const user_chat_id = telegramUser?.id || 0; 
-    const firstName = telegramUser?.first_name || 'Web';
-    const lastName = telegramUser?.last_name || 'User';
+    const user_chat_id = telegramUser ? telegramUser.id : 0; 
 
     try {
       const response = await fetch(`${VITE_API_NGROK}/api/create-payment`, {
@@ -159,9 +145,9 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
           price: getTotalPrice(),
           method_slug: paymentMethod,
           user_chat_id: user_chat_id,
-          buyer_first_name: firstName,
-          buyer_last_name: lastName,
-          type: pack.type || 'uc',
+          buyer_first_name: telegramUser?.first_name || 'Web',
+          buyer_last_name: telegramUser?.last_name || 'User',
+          type: pack.type || 'uc', // Отправляем steam_topup если он выбран
           is_code: pack.is_code || false
         })
       });
@@ -178,8 +164,6 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     } finally { setIsLoading(false); }
   };
 
-  const triggerHaptic = (style: any) => tg?.HapticFeedback?.impactOccurred?.(style);
-
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 px-4 max-w-md mx-auto relative z-10 text-white">
       {activeOrderId && <PaymentStatusOverlay orderId={activeOrderId} apiBase={VITE_API_NGROK} type={pack.type} onClose={() => { setActiveOrderId(null); onBack(); }} />}
@@ -187,7 +171,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       <div className={`fixed bottom-0 left-0 right-0 z-[101] bg-[#1c1c21] border-t border-white/10 rounded-t-[40px] transition-transform duration-500 ${showHelp ? 'translate-y-0' : 'translate-y-full'}`} style={{ height: '70%' }}>
         <div className="px-6 flex justify-between items-center mt-8 mb-6">
           <h2 className="text-xl font-black uppercase italic">Помощь</h2>
-          <button onClick={() => setShowHelp(false)} className="p-3 bg-white/5 rounded-full text-white/50 active:scale-90"><X size={24} /></button>
+          <button onClick={() => setShowHelp(false)} className="p-3 bg-white/5 rounded-full text-white/50 active:scale-90 transition-all"><X size={24} /></button>
         </div>
         <div className="px-6 flex flex-col items-center text-center text-white/60">
             <p className="mb-6">{pack.type === 'steam_topup' ? 'Нужен Логин аккаунта (Account Name), а не никнейм.' : 'ID можно найти в профиле игры.'}</p>
@@ -196,13 +180,14 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
       </div>
 
       <div className="flex items-center gap-4 pt-6">
-        <button onClick={() => { triggerHaptic('light'); onBack(); }} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/30">
+        <button onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); onBack(); }} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/30 active:scale-90 transition-all">
           <ChevronLeft size={20} />
         </button>
         <h1 className="text-2xl font-black uppercase italic">Оформление</h1>
       </div>
 
       <div className="bg-black/50 backdrop-blur-xl rounded-[32px] p-6 border border-amber-500/40 relative overflow-hidden shadow-2xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-50" />
         <div className="flex items-center gap-5 relative z-10">
           <img src={pack.image || '/pp.png'} className="w-16 h-16 rounded-[20px] object-cover border-2 border-white/20" alt="Pack" />
           <div className="flex flex-col">
@@ -226,7 +211,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
         <label className="text-[11px] font-black text-white/30 uppercase tracking-widest text-center block">Метод оплаты</label>
         <div className="grid grid-cols-2 gap-4">
           {[ { id: 'sbp' as const, img: '/sbp.jpg' }, { id: 'card' as const, img: '/card.jpg' } ].map((m) => (
-            <button key={m.id} onClick={() => { triggerHaptic('light'); setPaymentMethod(m.id); }} className={`h-20 rounded-[24px] border-2 transition-all flex items-center justify-center relative ${paymentMethod === m.id ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-white/5 border-white/5 opacity-60'}`}>
+            <button key={m.id} onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); setPaymentMethod(m.id); }} className={`h-20 rounded-[24px] border-2 transition-all flex items-center justify-center relative ${paymentMethod === m.id ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-white/5 border-white/5 opacity-60'}`}>
               <img src={m.img} className="h-8 object-contain" alt={m.id} />
               {paymentMethod === m.id && <div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-1"><CheckCircle2 size={14} className="text-black" strokeWidth={4} /></div>}
             </button>
@@ -249,7 +234,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
               </div>
             )}
         </div>
-        <button onClick={() => { triggerHaptic('heavy'); handlePayment(); }} disabled={isLoading || (!pack.is_code && !uid.trim())} className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-[24px] font-black text-black text-xl uppercase transition-all active:scale-[0.97] disabled:opacity-50 shadow-xl shadow-amber-900/20">
+        <button onClick={() => { if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy'); handlePayment(); }} disabled={isLoading || (!pack.is_code && !uid.trim())} className="w-full bg-amber-500 hover:bg-amber-400 py-6 rounded-[24px] font-black text-black text-xl uppercase transition-all active:scale-[0.97] disabled:opacity-50 shadow-xl shadow-amber-900/20">
           {isLoading ? <Loader2 className="animate-spin mx-auto w-7 h-7" /> : 'Подтвердить и оплатить'}
         </button>
       </div>
