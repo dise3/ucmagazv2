@@ -139,7 +139,7 @@ const Checkout: React.FC<CheckoutProps> = ({ pack, onBack }) => {
     setError('');
     
     // ПРОВЕРКА: берем ID только если tgUser существует, иначе null (исправляет краш)
-    const user_chat_id = tgUser?.id || null;
+    const user_chat_id = tgUser?.id || 0;
 
     try {
       const response = await fetch(`${VITE_API_NGROK}/api/create-payment`, {
