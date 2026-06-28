@@ -996,17 +996,30 @@ app.post('/api/payment-callback', async (req, res) => {
                     }
                     
                     return; // Выходим, так как заказ обработан через NS API
-                } catch (e: any) {
-                    console.error('❌ Ошибка автовыдачи NS:', e.response?.data || e.message);
+} catch (e: any) {
+                    // 1. Извлекаем детальную ошибку от NS API
+                    const errorData = e.response?.data;
+                    console.error('❌ ПОЛНЫЙ ОТВЕТ ОБ ОШИБКЕ:', JSON.stringify(errorData, null, 2));
 
-                    const errorDetail = e.response?.data?.detail || e.message;
+                    // 2. Формируем понятный текст для админа
+                    let errorMessage = 'Неизвестная ошибка';
+                    if (errorData) {
+                        // NS API обычно возвращает ошибку в поле detail
+                        errorMessage = typeof errorData === 'string' ? errorData : (errorData.detail || errorData.message || JSON.stringify(errorData));
+                    } else {
+                        errorMessage = e.message;
+                    }
+
+                    const username = await getDisplayName(order);
+                    
                     await sendTg(ADMIN_CHAT_ID, 
                         `❌ <b>ОШИБКА АВТОВЫДАЧИ #${order.id}</b>\n` +
                         `Тип: ${order.order_type}\n` +
-                        `Причина: ${errorDetail}\n\n` +
-                        `⚠️ Требуется ручная проверка/выдача!`
+                        `Юзер: ${username}\n` +
+                        `Причина: <code>${errorMessage}</code>\n\n` +
+                        `⚠️ <b>ВЫДАЙТЕ ВРУЧНУЮ!</b>`
                     );
-                    return; // Прекращаем выполнение, чтобы не сработали другие условия
+                    return;
                 }
             }
             // --- КОНЕЦ БЛОКА NS API ---

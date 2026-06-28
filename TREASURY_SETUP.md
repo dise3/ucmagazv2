@@ -72,3 +72,5 @@ UPDATE shop_balance SET balance_rub = balance_rub + 5000 WHERE id = 1;
 1. Перезапустить сервер (`npm start` в `server`).
 2. В боте снова отправить **`/admin`**.
 ALTER TABLE settings ADD COLUMN steam_fee_percent FLOAT DEFAULT 0.15;
+npm install uuid
+npm install --save-dev @types/uuid
