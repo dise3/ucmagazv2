@@ -42,7 +42,6 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-20 px-4">
-      {/* Заголовок */}
       <div className="flex items-center gap-4">
         <button 
           onClick={onBack} 
@@ -55,7 +54,6 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         </h1>
       </div>
 
-      {/* Выбор валюты */}
       <div className="grid grid-cols-3 gap-2 bg-white/5 backdrop-blur-sm p-1 rounded-2xl border border-amber-500/30">
         {(['TRY', 'USD', 'PLN'] as const).map(curr => (
           <button
@@ -72,7 +70,6 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
 
-      {/* Карточки товаров */}
       <div className="grid grid-cols-2 gap-3">
         {cards[currency].map(card => (
           <button
@@ -82,23 +79,28 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
           >
             {/* Картинка */}
             <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-amber-600/20 to-amber-800/20 mb-3 relative">
+              {/* Показываем картинку */}
               <img 
                 src={card.image} 
                 alt={card.label}
                 className="w-full h-full object-cover"
                 onError={(e) => {
+                  // Если картинка не загрузилась - показываем эмодзи
                   e.currentTarget.style.display = 'none';
+                  const fallback = e.currentTarget.parentElement?.querySelector('.fallback-icon');
+                  if (fallback) fallback.classList.remove('hidden');
                 }}
               />
-              {/* Fallback иконка */}
-              <div className="w-full h-full flex items-center justify-center text-4xl">
+              
+              {/* Fallback эмодзи (скрыт по умолчанию) */}
+              <div className="w-full h-full flex items-center justify-center text-4xl fallback-icon hidden">
                 🎮
               </div>
-              {/* Amber рамка при наведении */}
+              
+              {/* Рамка при наведении */}
               <div className="absolute inset-0 border-2 border-transparent group-hover:border-amber-400/50 rounded-2xl transition-all"></div>
             </div>
 
-            {/* Информация */}
             <div className="w-full text-center">
               <div className="text-white font-bold text-lg group-hover:text-amber-400 transition-colors">
                 {card.label}
@@ -114,7 +116,6 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
 
-      {/* Дополнительная информация */}
       <div className="flex items-center justify-center gap-2 mt-2">
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
         <p className="text-amber-600/40 text-[10px] font-medium px-4 text-center">
@@ -123,7 +124,6 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
       </div>
 
-      {/* Декоративные точки */}
       <div className="flex justify-center gap-1">
         {[...Array(5)].map((_, i) => (
           <div 
