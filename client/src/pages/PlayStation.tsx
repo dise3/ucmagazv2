@@ -41,22 +41,30 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
   }
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-20 px-4">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-20 px-4 bg-black min-h-screen">
+      {/* Заголовок */}
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-3 bg-white/10 rounded-2xl active:scale-90 border border-white/10">
-          <ChevronLeft size={20} className="text-white" />
+        <button 
+          onClick={onBack} 
+          className="p-3 bg-[#1a1a1a] rounded-2xl active:scale-90 border border-yellow-600/30 hover:border-yellow-500/60 transition-all"
+        >
+          <ChevronLeft size={20} className="text-yellow-500" />
         </button>
-        <h1 className="text-2xl font-black text-white uppercase italic">PlayStation</h1>
+        <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600 uppercase italic">
+          PlayStation
+        </h1>
       </div>
 
       {/* Выбор валюты */}
-      <div className="grid grid-cols-3 gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
+      <div className="grid grid-cols-3 gap-2 bg-[#1a1a1a] p-1 rounded-2xl border border-yellow-600/30">
         {(['TRY', 'USD', 'PLN'] as const).map(curr => (
           <button
             key={curr}
             onClick={() => setCurrency(curr)}
             className={`py-3 rounded-xl font-black text-[10px] transition-all ${
-              currency === curr ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-white/40'
+              currency === curr 
+                ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-black shadow-lg shadow-yellow-600/30' 
+                : 'text-yellow-600/40 hover:text-yellow-400'
             }`}
           >
             {curr === 'TRY' ? 'TURKEY 🇹🇷' : curr === 'USD' ? 'USA 🇺🇸' : 'POLAND 🇵🇱'}
@@ -64,22 +72,21 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
 
-      {/* Карточки товаров в сетке 2 колонки */}
+      {/* Карточки товаров */}
       <div className="grid grid-cols-2 gap-3">
         {cards[currency].map(card => (
           <button
             key={card.id}
             onClick={() => setSelectedCard(card)}
-            className="bg-[#1c1c1e] border border-white/10 rounded-[28px] p-4 active:scale-[0.97] transition-all hover:border-blue-500/50 flex flex-col items-center"
+            className="bg-[#1a1a1a] border border-yellow-600/30 rounded-[28px] p-4 active:scale-[0.97] transition-all hover:border-yellow-400/70 hover:shadow-lg hover:shadow-yellow-600/20 flex flex-col items-center group"
           >
             {/* Картинка */}
-            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600/20 to-purple-600/20 mb-3">
+            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-yellow-600/20 to-yellow-800/20 mb-3 relative">
               <img 
                 src={card.image} 
                 alt={card.label}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  // Если картинка не загрузилась, показываем иконку
                   e.currentTarget.style.display = 'none';
                 }}
               />
@@ -87,15 +94,19 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
               <div className="w-full h-full flex items-center justify-center text-4xl">
                 🎮
               </div>
+              {/* Золотая рамка при наведении */}
+              <div className="absolute inset-0 border-2 border-transparent group-hover:border-yellow-400/50 rounded-2xl transition-all"></div>
             </div>
 
             {/* Информация */}
             <div className="w-full text-center">
-              <div className="text-white font-bold text-lg">{card.label}</div>
-              <div className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-1">
+              <div className="text-white font-bold text-lg group-hover:text-yellow-400 transition-colors">
+                {card.label}
+              </div>
+              <div className="text-yellow-600/40 text-[10px] font-bold uppercase tracking-widest mb-1">
                 Код активации
               </div>
-              <div className="text-xl font-black text-white">
+              <div className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600">
                 {card.price} ₽
               </div>
             </div>
@@ -103,9 +114,25 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
 
-      <p className="text-center text-white/20 text-[10px] font-medium px-10">
-        Код придет в чат-бот сразу после подтверждения оплаты
-      </p>
+      {/* Дополнительная информация */}
+      <div className="flex items-center justify-center gap-2 mt-2">
+        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-yellow-600/30 to-transparent"></div>
+        <p className="text-yellow-600/30 text-[10px] font-medium px-4 text-center">
+          ⚡ Код придет в чат-бот сразу после подтверждения оплаты
+        </p>
+        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-yellow-600/30 to-transparent"></div>
+      </div>
+
+      {/* Декоративный элемент */}
+      <div className="flex justify-center gap-1">
+        {[...Array(5)].map((_, i) => (
+          <div 
+            key={i} 
+            className="w-1 h-1 rounded-full bg-yellow-600/20"
+            style={{ animationDelay: `${i * 0.1}s` }}
+          ></div>
+        ))}
+      </div>
     </div>
   );
 };
