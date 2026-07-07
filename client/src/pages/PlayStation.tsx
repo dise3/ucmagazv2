@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import Checkout from './Checkout';
 
 const PlayStation = ({ onBack }: { onBack: () => void }) => {
   const [currency, setCurrency] = useState<'TRY' | 'USD' | 'PLN'>('TRY');
   const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
   const cards = {
     TRY: [
@@ -24,6 +25,16 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
       { id: 107, label: '100 PLN', price: 2850, image: '/ps-pln.jpg' },
     ]
   };
+
+  // Проверка доступности картинок
+  useEffect(() => {
+    cards[currency].forEach(card => {
+      const img = new Image();
+      img.src = card.image;
+      img.onload = () => console.log(`✅ Картинка загружена: ${card.image}`);
+      img.onerror = () => console.error(`❌ Ошибка загрузки: ${card.image}`);
+    });
+  }, [currency]);
 
   if (selectedCard) {
     return (
@@ -71,49 +82,53 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {cards[currency].map(card => (
-          <button
-            key={card.id}
-            onClick={() => setSelectedCard(card)}
-            className="bg-white/5 backdrop-blur-sm border border-amber-500/30 rounded-[28px] p-4 active:scale-[0.97] transition-all hover:border-amber-400/70 hover:shadow-lg hover:shadow-amber-600/20 flex flex-col items-center group"
-          >
-            {/* Картинка */}
-            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-amber-600/20 to-amber-800/20 mb-3 relative">
-              {/* Показываем картинку */}
-              <img 
-                src={card.image} 
-                alt={card.label}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Если картинка не загрузилась - показываем эмодзи
-                  e.currentTarget.style.display = 'none';
-                  const fallback = e.currentTarget.parentElement?.querySelector('.fallback-icon');
-                  if (fallback) fallback.classList.remove('hidden');
-                }}
-              />
-              
-              {/* Fallback эмодзи (скрыт по умолчанию) */}
-              <div className="w-full h-full flex items-center justify-center text-4xl fallback-icon hidden">
-                🎮
+        {cards[currency].map(card => {
+          const hasError = imageErrors[card.image];
+          
+          return (
+            <button
+              key={card.id}
+              onClick={() => setSelectedCard(card)}
+              className="bg-white/5 backdrop-blur-sm border border-amber-500/30 rounded-[28px] p-4 active:scale-[0.97] transition-all hover:border-amber-400/70 hover:shadow-lg hover:shadow-amber-600/20 flex flex-col items-center group"
+            >
+              <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-amber-600/20 to-amber-800/20 mb-3 relative">
+                {!hasError ? (
+                  <img 
+                    src={card.image} 
+                    alt={card.label}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.error(`❌ Ошибка загрузки картинки: ${card.image}`);
+                      setImageErrors(prev => ({ ...prev, [card.image]: true }));
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    onLoad={() => {
+                      console.log(`✅ Картинка загружена: ${card.image}`);
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-4xl bg-gradient-to-br from-amber-600/40 to-amber-800/40">
+                    🎮
+                  </div>
+                )}
+                
+                <div className="absolute inset-0 border-2 border-transparent group-hover:border-amber-400/50 rounded-2xl transition-all"></div>
               </div>
-              
-              {/* Рамка при наведении */}
-              <div className="absolute inset-0 border-2 border-transparent group-hover:border-amber-400/50 rounded-2xl transition-all"></div>
-            </div>
 
-            <div className="w-full text-center">
-              <div className="text-white font-bold text-lg group-hover:text-amber-400 transition-colors">
-                {card.label}
+              <div className="w-full text-center">
+                <div className="text-white font-bold text-lg group-hover:text-amber-400 transition-colors">
+                  {card.label}
+                </div>
+                <div className="text-amber-600/40 text-[10px] font-bold uppercase tracking-widest mb-1">
+                  Код активации
+                </div>
+                <div className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">
+                  {card.price} ₽
+                </div>
               </div>
-              <div className="text-amber-600/40 text-[10px] font-bold uppercase tracking-widest mb-1">
-                Код активации
-              </div>
-              <div className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">
-                {card.price} ₽
-              </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-center gap-2 mt-2">
