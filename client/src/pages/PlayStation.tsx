@@ -6,23 +6,22 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
   const [currency, setCurrency] = useState<'TRY' | 'USD' | 'PLN'>('TRY');
   const [selectedCard, setSelectedCard] = useState<any>(null);
 
-  // Твои ручные настройки цен
   const cards = {
     TRY: [
-      { id: 72, label: '250 TRY', price: 950 },
-      { id: 73, label: '500 TRY', price: 1850 },
-      { id: 75, label: '1000 TRY', price: 3600 },
-      { id: 78, label: '2500 TRY', price: 8900 },
+      { id: 72, label: '250 TRY', price: 950, image: '/ps-try.jpg' },
+      { id: 73, label: '500 TRY', price: 1850, image: '/ps-try.jpg' },
+      { id: 75, label: '1000 TRY', price: 3600, image: '/ps-try.jpg' },
+      { id: 78, label: '2500 TRY', price: 8900, image: '/ps-try.jpg' },
     ],
     USD: [
-      { id: 117, label: '$10 USA', price: 1150 },
-      { id: 118, label: '$25 USA', price: 2700 },
-      { id: 119, label: '$50 USA', price: 5300 },
-      { id: 121, label: '$100 USA', price: 10400 },
+      { id: 117, label: '$10 USA', price: 1150, image: '/ps-usa.jpg' },
+      { id: 118, label: '$25 USA', price: 2700, image: '/ps-usa.jpg' },
+      { id: 119, label: '$50 USA', price: 5300, image: '/ps-usa.jpg' },
+      { id: 121, label: '$100 USA', price: 10400, image: '/ps-usa.jpg' },
     ],
     PLN: [
-      { id: 106, label: '50 PLN', price: 1450 },
-      { id: 107, label: '100 PLN', price: 2850 },
+      { id: 106, label: '50 PLN', price: 1450, image: '/ps-pln.jpg' },
+      { id: 107, label: '100 PLN', price: 2850, image: '/ps-pln.jpg' },
     ]
   };
 
@@ -32,8 +31,8 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         onBack={() => setSelectedCard(null)}
         pack={{
           type: 'ps_gift',
-          amount: selectedCard.id, // Передаем ID товара NS API
-          price: selectedCard.price, // Фиксированная цена в рублях
+          amount: selectedCard.id,
+          price: selectedCard.price,
           title: `PS Store ${selectedCard.label}`,
           image: '/ps-icon.png'
         }}
@@ -65,25 +64,40 @@ const PlayStation = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
 
-      {/* Карточки товаров */}
-      <div className="grid grid-cols-1 gap-3">
+      {/* Карточки товаров в сетке 2 колонки */}
+      <div className="grid grid-cols-2 gap-3">
         {cards[currency].map(card => (
           <button
             key={card.id}
             onClick={() => setSelectedCard(card)}
-            className="bg-[#1c1c1e] border border-white/10 p-5 rounded-[28px] flex justify-between items-center active:scale-[0.98] transition-all hover:border-blue-500/50"
+            className="bg-[#1c1c1e] border border-white/10 rounded-[28px] p-4 active:scale-[0.97] transition-all hover:border-blue-500/50 flex flex-col items-center"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-600/20 rounded-2xl flex items-center justify-center">
-                <span className="text-blue-400 font-black">PS</span>
-              </div>
-              <div className="flex flex-col items-start">
-                <span className="text-white font-black text-lg">{card.label}</span>
-                <span className="text-white/30 text-[10px] font-bold uppercase tracking-widest">Код активации</span>
+            {/* Картинка */}
+            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600/20 to-purple-600/20 mb-3">
+              <img 
+                src={card.image} 
+                alt={card.label}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Если картинка не загрузилась, показываем иконку
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              {/* Fallback иконка */}
+              <div className="w-full h-full flex items-center justify-center text-4xl">
+                🎮
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-xl font-black text-white">{card.price} ₽</div>
+
+            {/* Информация */}
+            <div className="w-full text-center">
+              <div className="text-white font-bold text-lg">{card.label}</div>
+              <div className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-1">
+                Код активации
+              </div>
+              <div className="text-xl font-black text-white">
+                {card.price} ₽
+              </div>
             </div>
           </button>
         ))}
