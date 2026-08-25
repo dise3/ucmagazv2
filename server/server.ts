@@ -2378,7 +2378,7 @@ app.post('/api/bot-webhook', async (req, res) => {
         if (data === 'platform_binance' || data === 'platform_bybit') {
             const state = adminStates.get(currentChatId);
             if (!state || state.action !== 'await_withdraw_platform') {
-                await sendTg(currentChatId, '❌ Сначала введите сумму');
+                await sendTg(currentChatId, 'Введите адрес кошелька');
                 return;
             }
             const platform = data === 'platform_binance' ? 'binance' : 'bybit';
