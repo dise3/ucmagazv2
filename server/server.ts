@@ -856,6 +856,7 @@ app.post('/api/create-payment', async (req, res) => {
             method_slug: method_slug || 'sbp',
             amount: Number(price),
             description: description,
+            shop_url: "https://t.me/rakutashop_bot",
             metadata: { 
                 order_id: order.id,
                 notification_url: `${process.env.BACKEND_URL || 'ВАШ_URL'}/api/payment-callback`
