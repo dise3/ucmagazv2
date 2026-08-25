@@ -243,7 +243,7 @@ export async function createWithdrawalRequest(
         `🏪 <b>Заявка на вывод #${req.id} (дочерний)</b>\n\n` +
         `💵 <b>${formatUsdt(params.amountUsdt)}</b>\n` +
         `📱 Площадка: <b>${platformLabel}</b>\n` +
-        `📋 <code>Адрес кошелька ${params.payoutDetails}</code>`;
+        `📋 Адрес кошелька: <code>${params.payoutDetails}</code>`;
 
     const keyboard = {
         inline_keyboard: [[{ text: '✅ Выполнено', callback_data: `wdone_${req.id}` }]],
