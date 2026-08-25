@@ -1419,7 +1419,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                         await sendTg(chatId, `❌ Недостаточно средств. Доступно: ${formatUsdt(summary.balanceUsdt)}`);
                         return
                     }
-                    adminStates.set(chatId, { action: 'await_withdraw_payout', withdrawAmount: amount });
+                    adminStates.set(chatId, { action: 'await_withdraw_platform', withdrawAmount: amount });
                     const keyboard = {
                         inline_keyboard: [
                             [{ text: '🟡 Binance', callback_data: 'platform_binance' }],
