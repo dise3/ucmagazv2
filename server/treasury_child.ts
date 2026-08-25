@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { platform } from 'node:os';
 
 const MSK_OFFSET_HOURS = 3;
 
@@ -140,8 +141,8 @@ export function formatChildTreasuryMessage(s: Awaited<ReturnType<typeof getChild
     const unconvertedLines =
         s.unconvertedDays.length > 0
             ? s.unconvertedDays
-                  .map((d) => `• ${d.day_date}: ${formatRub(d.rub_total)}`)
-                  .join('\n')
+                .map((d) => `• ${d.day_date}: ${formatRub(d.rub_total)}`)
+                .join('\n')
             : '—';
     const rateLine = s.lastRate ? `\nПоследний курс: <b>${s.lastRate}</b> руб/USDT` : '';
     return (
@@ -198,6 +199,7 @@ export async function createWithdrawalRequest(
     params: {
         amountUsdt: number;
         payoutDetails: string;
+        platform: 'binance' | 'bybit'
         adminChatId: string;
     }
 ) {
@@ -224,6 +226,7 @@ export async function createWithdrawalRequest(
             store_label: STORE_LABEL,
             amount_usdt: params.amountUsdt,
             payout_details: params.payoutDetails,
+            platform: params.platform,
             status: 'pending',
             admin_chat_id: params.adminChatId,
         })
@@ -235,9 +238,11 @@ export async function createWithdrawalRequest(
         return { ok: false as const, error: error?.message || 'Не удалось создать заявку' };
     }
 
+    const platformLabel = params.platform === 'binance' ? 'Binance' : 'Bybit';
     const adminText =
         `🏪 <b>Заявка на вывод #${req.id} (дочерний)</b>\n\n` +
         `💵 <b>${formatUsdt(params.amountUsdt)}</b>\n` +
+        `📱 Площадка: <b>${platformLabel}</b>\n` +
         `📋 <code>${params.payoutDetails}</code>`;
 
     const keyboard = {
@@ -281,12 +286,15 @@ export async function completeWithdrawalRequest(
         .eq('id', requestId);
     if (updErr) return { ok: false as const, error: updErr.message };
 
+
+    const platformLabel = req.platform === 'binance' ? 'Binance' : 'Bybit';
     await sendTelegramBot(
         childBotToken,
         req.admin_chat_id,
         `✅ <b>Вывод #${requestId} выполнен</b>\n\n` +
-            `💵 ${formatUsdt(amount)}\n` +
-            `📋 <code>${req.payout_details}</code>`
+        `💵 ${formatUsdt(amount)}\n` +
+        `📱 ${platformLabel}\n` +
+        `📋 <code>${req.payout_details}</code>`
     );
 
     return { ok: true as const };

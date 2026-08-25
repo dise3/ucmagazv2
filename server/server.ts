@@ -41,7 +41,7 @@ app.use(express.static(join(__dirname, '..', 'client', 'dist')));
 
 // --- ИНИЦИАЛИЗАЦИЯ SUPABASE ---
 const supabase = createClient(
-    process.env.SUPABASE_URL!, 
+    process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!
 );
 
@@ -62,26 +62,27 @@ function treasuryAuth(req: express.Request, res: express.Response, next: express
 const automationTimers = new Map<number, NodeJS.Timeout>();
 
 // Состояния админов для кнопочного ввода (chatId -> { action, extra? })
-type AdminState = { 
-    action: string; 
+type AdminState = {
+    action: string;
     uc?: number;
     title?: string;
     price?: number;
     message?: string;
     withdrawAmount?: number;
+    platform?: 'binance' | 'bybit';
 };
 const adminStates = new Map<string, AdminState>();
 
 
 const NS_SERVICES = {
     STEAM_TOPUP: 1, // Прямое пополнение RU/KZ/UA
-    
+
     // Карта соответствия номиналов PS и их ID в NS API
     PLAYSTATION: {
         PLN: { 50: 106, 100: 107 },
-        TRY: { 
-            250: 72, 500: 73, 750: 74, 1000: 75, 1500: 76, 
-            2000: 77, 2500: 78, 3000: 79, 4000: 80, 5000: 81 
+        TRY: {
+            250: 72, 500: 73, 750: 74, 1000: 75, 1500: 76,
+            2000: 77, 2500: 78, 3000: 79, 4000: 80, 5000: 81
         },
         USD: { 1: 115, 5: 116, 10: 117, 25: 118, 50: 119, 75: 120, 100: 121 }
     }
@@ -98,13 +99,13 @@ const sendTg = async (chatId: string | number | string[], text: string, replyMar
     }
     try {
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: chatId, 
-            text: text, 
-            parse_mode: 'HTML', 
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'HTML',
             reply_markup: replyMarkup
         });
-    } catch (e: any) { 
-        console.error('❌ Ошибка отправки TG:', e.response?.data || e.message); 
+    } catch (e: any) {
+        console.error('❌ Ошибка отправки TG:', e.response?.data || e.message);
     }
 };
 
@@ -117,7 +118,7 @@ const sendLocalPhoto = async (chatId: string | number | string[], photoPath: str
     }
     try {
         const photoBuffer = fs.readFileSync(photoPath);
-        
+
         const formData = new FormData();
         formData.append('chat_id', chatId.toString());
         formData.append('photo', photoBuffer, 'start.jpg');
@@ -159,13 +160,13 @@ const getDisplayName = async (order: any) => {
     if (order.username) {
         return order.username.startsWith('@') ? order.username : `@${order.username}`;
     }
-    
+
     // Если это Telegram пользователь, получаем данные через API
     if (order.user_chat_id) {
         const userInfo = await getUserInfo(order.user_chat_id);
         return userInfo.username ? `@${userInfo.username}` : `${userInfo.first_name} ${userInfo.last_name}`.trim();
     }
-    
+
     // Запасной вариант
     return 'Неизвестный пользователь';
 };
@@ -173,10 +174,10 @@ const getDisplayName = async (order: any) => {
 const editTg = async (chatId: string | number, msgId: number, text: string, replyMarkup?: any) => {
     try {
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
-            chat_id: chatId, 
-            message_id: msgId, 
-            text: text, 
-            parse_mode: 'HTML', 
+            chat_id: chatId,
+            message_id: msgId,
+            text: text,
+            parse_mode: 'HTML',
             reply_markup: replyMarkup
         });
     } catch (e: any) {
@@ -220,56 +221,56 @@ const parseMultipleCodes = (input: string): { uc: number; code: string }[] => {
 const answerCallback = async (queryId: string, text: string) => {
     try {
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            callback_query_id: queryId, 
+            callback_query_id: queryId,
             text: text
         });
-    } catch (e) {}
+    } catch (e) { }
 };
 
 const calculateProfit = async (days: number) => {
     let startDate: Date;
     let endDate: Date | undefined;
-    
+
     if (days === 1) {
         // Для одного дня: с 00:00 до 23:59 сегодняшнего дня по МСК
         const now = new Date();
         const mskOffset = 3; // МСК = UTC+3
-        
+
         startDate = new Date();
         startDate.setUTCHours(-mskOffset, 0, 0, 0); // 00:00 МСК = 21:00 предыдущего дня UTC
-        
+
         endDate = new Date();
         endDate.setUTCHours(23 - mskOffset, 59, 59, 999); // 23:59 МСК = 20:59 UTC
-        
+
         console.log(`[DEBUG] Today period (MSK): ${startDate.toISOString()} to ${endDate.toISOString()}`);
         console.log(`[DEBUG] Local time: ${startDate.toLocaleString()} to ${endDate.toLocaleString()}`);
     } else if (days === 30) {
         // Для месяца: с 1 числа текущего месяца по сегодня
         const now = new Date();
         const mskOffset = 3; // МСК = UTC+3
-        
+
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         startDate.setUTCHours(-mskOffset, 0, 0, 0); // 00:00 МСК 1 числа
-        
+
         endDate = new Date();
         endDate.setUTCHours(23 - mskOffset, 59, 59, 999); // 23:59 МСК сегодня
-        
+
         console.log(`[DEBUG] Month period (MSK): ${startDate.toISOString()} to ${endDate.toISOString()}`);
         console.log(`[DEBUG] Local time: ${startDate.toLocaleString()} to ${endDate.toLocaleString()}`);
     } else if (days === -1) {
         // Для прошлого месяца: с 1 по последнее число прошлого месяца
         const now = new Date();
         const mskOffset = 3; // МСК = UTC+3
-        
+
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // Последнее число прошлого месяца
-        
+
         startDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1);
         startDate.setUTCHours(-mskOffset, 0, 0, 0); // 00:00 МСК 1 числа прошлого месяца
-        
+
         endDate = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), lastMonthEnd.getDate());
         endDate.setUTCHours(23 - mskOffset, 59, 59, 999); // 23:59 МСК последнего числа прошлого месяца
-        
+
         console.log(`[DEBUG] Last month period (MSK): ${startDate.toISOString()} to ${endDate.toISOString()}`);
         console.log(`[DEBUG] Local time: ${startDate.toLocaleString()} to ${endDate.toLocaleString()}`);
     } else {
@@ -277,57 +278,57 @@ const calculateProfit = async (days: number) => {
         startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
         startDate.setHours(0, 0, 0, 0);
-        
+
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
     }
-    
+
     // Получаем настройки для расчета себестоимости
     const { data: settings } = await supabase
         .from('settings')
         .select('usd_rate, pp_price_usd, pp_markup_rub, ticket_price_usd, ticket_markup_rub, prime_price_usd, prime_1m_usd, prime_3m_usd, prime_6m_usd, prime_12m_usd, prime_plus_1m_usd, prime_plus_3m_usd, prime_plus_6m_usd, prime_plus_12m_usd')
         .single();
-    
+
     const { data: baseDenoms } = await supabase
         .from('base_denominations')
         .select('amount_uc, price_usd');
-    
+
     let query = supabase
         .from('orders')
         .select('id, final_amount, commission_amount, order_type, amount_uc, price_rub')
         .in('status', ['completed', 'paid', 'partial'])
         .in('order_type', ['uc', 'prime', 'pp', 'tickets', 'prime_plus'])
         .gte('created_at', startDate.toISOString());
-    
+
     // Добавляем endDate если он установлен
     if (endDate) {
         query = query.lte('created_at', endDate.toISOString());
     }
-    
+
     const { data } = await query;
     const { data: products } = await supabase
         .from('products')
         .select('amount_uc, markup_rub');
-    
+
     console.log(`[DEBUG] calculateProfit: Found ${data?.length || 0} orders for period ${startDate.toISOString()} to ${endDate?.toISOString() || 'now'}`);
     if (data) {
         console.log(`[DEBUG] Orders:`, data.map(o => ({ id: o.id || 'unknown', type: o.order_type, price: o.price_rub, final: o.final_amount, uc: o.amount_uc })));
     }
-    
+
     let totalMarkup = 0;
     let totalCommission = 0;
-    
+
     if (data && settings) {
         const usdRate = settings.usd_rate || 80;
         console.log(`[DEBUG] USD rate: ${usdRate}`);
         console.log(`[DEBUG] Base denominations:`, baseDenoms);
         console.log(`[DEBUG] Products with markups:`, products);
-        
+
         for (const order of data) {
             const priceRub = order.price_rub || 0;
             const commission = order.commission_amount || 0;
             let baseCost = 0;
-            
+
             // Расчет реальной себестоимости
             if (order.order_type === 'uc' && order.amount_uc) {
                 // Для UC: ищем базовую цену в base_denominations
@@ -349,7 +350,7 @@ const calculateProfit = async (days: number) => {
                 // Для Prime: определяем период по количеству месяцев и берем соответствующую базовую цену
                 const amountUc = order.amount_uc || 0;
                 let primeBasePrice = 0;
-                
+
                 if (amountUc === 1) {
                     primeBasePrice = settings.prime_1m_usd || 0; // 1 месяц
                 } else if (amountUc === 3) {
@@ -371,13 +372,13 @@ const calculateProfit = async (days: number) => {
                         primeBasePrice = settings.prime_12m_usd || 0;
                     }
                 }
-                
+
                 baseCost = primeBasePrice * usdRate;
             } else if (order.order_type === 'prime_plus') {
                 // Для Prime Plus: определяем период по количеству месяцев и берем соответствующую базовую цену
                 const amountUc = order.amount_uc || 0;
                 let primePlusBasePrice = 0;
-                
+
                 if (amountUc === 1) {
                     primePlusBasePrice = settings.prime_plus_1m_usd || 0; // 1 месяц
                 } else if (amountUc === 3) {
@@ -399,12 +400,12 @@ const calculateProfit = async (days: number) => {
                         primePlusBasePrice = settings.prime_plus_12m_usd || 0;
                     }
                 }
-                
+
                 baseCost = primePlusBasePrice * usdRate;
             }
-            
+
             let markup = 0;
-            
+
             // Получаем наценку из базы данных
             if (order.order_type === 'uc' && order.amount_uc) {
                 const product = products?.find((p: any) => p.amount_uc === order.amount_uc);
@@ -422,19 +423,19 @@ const calculateProfit = async (days: number) => {
                 // Для Prime Plus наценка уже включена в цену
                 markup = priceRub - baseCost;
             }
-            
+
             totalMarkup += markup;
             totalCommission += commission;
             console.log(`[DEBUG] Order #${order.id}: price=${priceRub}, baseCost=${baseCost}, markup=${markup}, commission=${commission}`);
         }
     }
-    
+
     // Комиссия от общей суммы наценок (4.85% для SBP)
     const commissionFromMarkup = totalMarkup * 0.0485;
     const totalProfit = totalMarkup - commissionFromMarkup;
-    
+
     console.log(`[DEBUG] Total markup: ${totalMarkup}, commission from markup: ${commissionFromMarkup}, final profit: ${totalProfit}`);
-    
+
     return { totalProfit, ordersCount: data?.length || 0 };
 };
 
@@ -447,7 +448,7 @@ const getAdminMainKeyboard = () => ({
         [{ text: "📊 Наценки /list", callback_data: "adm_list" }, { text: "🛒 Управление товарами", callback_data: "admin_manage" }],
         [{ text: "📢 Рассылки", callback_data: "adm_broadcasts" }, { text: "💵 Прибыль", callback_data: "adm_profit" }],
         [{ text: "🔄 Активировать аккаунты", callback_data: "adm_activate_accounts" }, { text: "💸 Вывести средства", callback_data: "money" }],
-        [{ text: "🎮 Наценка Steam %", callback_data: "adm_steam_markup"}]
+        [{ text: "🎮 Наценка Steam %", callback_data: "adm_steam_markup" }]
     ],
 });
 
@@ -571,12 +572,12 @@ app.post('/api/activate-accounts', async (req, res) => {
         const { error } = await supabase
             .from('midas_accounts')
             .update({ is_active: true });
-        
+
         if (error) {
             console.error('❌ Ошибка активации аккаунтов (cron):', error);
             return res.status(500).json({ error: error.message });
         }
-        
+
         console.log('✅ Все аккаунты Midasbuy активированы (cron)');
         res.json({ success: true, message: 'Аккаунты активированы' });
     } catch (err) {
@@ -588,7 +589,7 @@ app.post('/api/activate-accounts', async (req, res) => {
 app.post('/api/steam/check-user', async (req, res) => {
     try {
         const { login } = req.body;
-        
+
         if (!login) {
             return res.status(400).json({ error: 'Логин не указан' });
         }
@@ -597,8 +598,8 @@ app.post('/api/steam/check-user', async (req, res) => {
         // Python: call("POST", "/api/v2/steam/check_user", json_body={"steam_id": "..."})
         // Наш JS: call(метод, путь, параметры_запроса, тело_запроса)
         const resp = await nsClient.call(
-            "POST", 
-            "/api/v2/steam/check_user", 
+            "POST",
+            "/api/v2/steam/check_user",
             null, // params (Query string) - тут пусто
             { "steam_id": login.trim() } // jsonBody (BODY) - как в Python примере
         );
@@ -607,14 +608,14 @@ app.post('/api/steam/check-user', async (req, res) => {
         // В JS: resp.accountStatus
         console.log(`[STEAM CHECK] Логин: ${login}, Результат: ${resp.accountStatus}`);
 
-        res.json({ 
+        res.json({
             valid: resp.accountStatus // возвращаем true или false
         });
 
     } catch (e: any) {
         // Логируем ошибку для отладки
         console.error('❌ Ошибка API при проверке Steam:', e.response?.data || e.message);
-        
+
         // В случае ошибки (например, неверная подпись или сервер NS упал)
         // возвращаем статус false, чтобы не дать оплатить невалидный логин
         res.status(200).json({ valid: false, error: 'Технические работы на стороне провайдера' });
@@ -630,7 +631,7 @@ app.get('/api/test-activate', async (req, res) => {
 
     const account = accounts[0];
     const result = await activateSingleCode({ email: account.email, pass: account.password }, uid, code, headless === 'false');
-    
+
     res.json({ result, account: account.email });
 });
 
@@ -638,7 +639,7 @@ app.get('/api/test-activate', async (req, res) => {
 app.get('/api/prime-prices', async (req, res) => {
     try {
         const { data: settings } = await supabase.from('settings').select('*').single();
-        
+
         if (!settings) return res.status(500).json({ error: 'DB Data not found' });
 
         const usdRateStore = settings.usd_rate_store || settings.usd_rate || 90;
@@ -681,7 +682,7 @@ app.get('/api/products', async (req, res) => {
         const { data: settings } = await supabase.from('settings').select('*').single();
         const { data: products } = await supabase.from('products').select('*').order('sort_order');
         const { data: baseDenoms } = await supabase.from('base_denominations').select('*').order('amount_uc', { ascending: false });
-        
+
         if (!settings || !products || !baseDenoms) return res.status(500).json({ error: 'DB Data not found' });
 
         const usdRate = store === 'promo' ? (settings.usd_rate_promo || settings.usd_rate || 90) : (settings.usd_rate_store || settings.usd_rate || 90);
@@ -723,7 +724,7 @@ app.get('/api/promo-products', async (req, res) => {
     try {
         const { data: settings } = await supabase.from('settings').select('*').single();
         const { data: stock } = await supabase.from('codes_stock').select('value').eq('is_used', false);
-        
+
         if (!settings || !stock) return res.status(500).json({ error: 'Data not found' });
 
         const counts: any = {};
@@ -751,12 +752,12 @@ app.get('/api/promo-products', async (req, res) => {
             const amount = parseInt(val);
             const baseUsd = calcUsdFromBase(amount);
             const finalPrice = Math.ceil((baseUsd * usdRate + 100) * (1 + settings.fee_percent));
-            
+
             return {
                 id: amount,
                 amount_uc: amount,
                 price: finalPrice,
-                image_url: '/1.png', 
+                image_url: '/1.png',
                 stock_count: counts[val]
             };
         });
@@ -799,13 +800,13 @@ app.post('/api/create-payment', async (req, res) => {
         // Вставка в базу данных
         const { data: order, error } = await supabase
             .from('orders')
-            .insert([{ 
-                uid_player: uid || 'PROMOCODE', 
-                amount_uc: amount, 
-                price_rub: price, 
-                status: 'pending', 
+            .insert([{
+                uid_player: uid || 'PROMOCODE',
+                amount_uc: amount,
+                price_rub: price,
+                status: 'pending',
                 user_chat_id: user_chat_id || 0,
-                is_code_order: !!is_code, 
+                is_code_order: !!is_code,
                 order_type: type || 'uc',
                 buyer_first_name: buyer_first_name || null,
                 buyer_last_name: buyer_last_name || null,
@@ -815,7 +816,7 @@ app.post('/api/create-payment', async (req, res) => {
             }])
             .select()
             .single();
-        
+
         // 1. СНАЧАЛА проверяем, нет ли ошибки от Supabase
         if (error) {
             console.error('Ошибка Supabase при создании заказа:', error);
@@ -857,7 +858,7 @@ app.post('/api/create-payment', async (req, res) => {
             amount: Number(price),
             description: description,
             shop_url: "https://t.me/rakutashop_bot",
-            metadata: { 
+            metadata: {
                 order_id: order.id,
                 notification_url: `${process.env.BACKEND_URL || 'ВАШ_URL'}/api/payment-callback`
             }
@@ -878,9 +879,9 @@ app.post('/api/create-payment', async (req, res) => {
 
         res.json({ url: response.data.url, order_id: order.id });
 
-    } catch (e : any) { 
-        console.error('Payment Error (General):', e.message); 
-        res.status(500).json({ error: e.message }); 
+    } catch (e: any) {
+        console.error('Payment Error (General):', e.message);
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -933,29 +934,29 @@ app.post('/api/payment-callback', async (req, res) => {
                 console.error('[treasury_child] recordChildOrderRevenue', e);
             }
 
- // --- ОБРАБОТКА STEAM И PLAYSTATION (NS API) ---
+            // --- ОБРАБОТКА STEAM И PLAYSTATION (NS API) ---
             if (order.order_type === 'steam_topup' || order.order_type === 'ps_gift') {
                 try {
                     console.log(`[NS API] Обработка заказа #${order.id} (${order.order_type})`);
-                    
+
                     let serviceId: number;
                     let fields: any[];
 
                     if (order.order_type === 'steam_topup') {
                         // --- ЛОГИКА STEAM ---
-                        serviceId = 1; 
+                        serviceId = 1;
                         fields = [
                             { key: "account", value: String(order.uid_player).trim() }, // Строка
                             { key: "amount", value: Number(order.amount_uc) }           // Число (USD)
                         ];
                     } else {
                         // --- ЛОГИКА PLAYSTATION ---
-                        serviceId = Number(order.amount_uc); 
+                        serviceId = Number(order.amount_uc);
                         fields = [{ key: "quantity", value: 1 }];
                     }
 
                     // ФИКС: Обязательно вызываем функцию со скобками ()
-                    const nsCustomId = uuidv4(); 
+                    const nsCustomId = uuidv4();
 
                     // 1. Создаем заказ в NS API
                     await nsClient.call("POST", "/api/v2/create_order", null, {
@@ -963,7 +964,7 @@ app.post('/api/payment-callback', async (req, res) => {
                         custom_id: nsCustomId,
                         fields: fields
                     });
-                    
+
                     // 2. Оплачиваем заказ (списание баланса NS)
                     const payResult = await nsClient.call("POST", "/api/v2/pay_order", null, {
                         custom_id: nsCustomId
@@ -972,13 +973,13 @@ app.post('/api/payment-callback', async (req, res) => {
                     if (payResult.status === 'completed') {
                         if (order.order_type === 'ps_gift' && payResult.pins && payResult.pins.length > 0) {
                             const pinCode = payResult.pins[0];
-                            await sendTg(order.user_chat_id, 
+                            await sendTg(order.user_chat_id,
                                 `🎁 <b>Ваш код PlayStation готов!</b>\n\n` +
                                 `Код: <code>${pinCode}</code>\n\n` +
                                 `<i>Активируйте его в настройках вашего аккаунта PS Store.</i>`
                             );
                         } else {
-                            await sendTg(order.user_chat_id, 
+                            await sendTg(order.user_chat_id,
                                 `✅ <b>Steam успешно пополнен!</b>\n\n` +
                                 `Логин: <code>${order.uid_player}</code>\n` +
                                 `Сумма: $${order.amount_uc}`
@@ -994,8 +995,8 @@ app.post('/api/payment-callback', async (req, res) => {
                         // Если статус 'insufficient' или другой
                         throw new Error(`Статус API: ${payResult.status}`);
                     }
-                    
-                    return; 
+
+                    return;
 
                 } catch (e: any) {
                     // Распаковка детальной ошибки
@@ -1010,8 +1011,8 @@ app.post('/api/payment-callback', async (req, res) => {
                     }
 
                     const username = await getDisplayName(order);
-                    
-                    await sendTg(ADMIN_CHAT_ID, 
+
+                    await sendTg(ADMIN_CHAT_ID,
                         `❌ <b>ОШИБКА АВТОВЫДАЧИ #${order.id}</b>\n` +
                         `Тип: ${order.order_type}\n` +
                         `Юзер: ${username}\n` +
@@ -1038,8 +1039,8 @@ app.post('/api/payment-callback', async (req, res) => {
                 await sendTg(
                     order.user_chat_id,
                     `💳 <b>Оплата прошла успешно!</b>\n\n` +
-                        `💎 <b>${order.amount_uc} UC</b> по входу будут зачислены вручную.\n\n` +
-                        `Обычно это занимает от 15 минут до нескольких часов.`
+                    `💎 <b>${order.amount_uc} UC</b> по входу будут зачислены вручную.\n\n` +
+                    `Обычно это занимает от 15 минут до нескольких часов.`
                 );
                 return;
             }
@@ -1091,7 +1092,7 @@ app.post('/api/payment-callback', async (req, res) => {
                 // Крупные заказы 1800+ - автовыдача с задержкой 2 минуты и возможностью перехвата
                 const username = await getDisplayName(order);
                 const adminMsg = `💰 <b>КРУПНЫЙ ЗАКАЗ #${order.id}</b>\n\n👤 <b>${username}</b>\n🆔 UID: <code>${order.uid_player}</code>\n💎 Сумма: ${order.amount_uc} UC\n💵 Руб: ${order.price_rub}\n\n⏰ <i>Автовыдача через 2 минуты. Можете перехватить.</i>`;
-                
+
                 const keyboard = { inline_keyboard: [[{ text: "🛑 Перехватить (Отменить бота)", callback_data: `hold_${order.id}` }]] };
                 await sendTg(ADMIN_CHAT_ID, adminMsg, keyboard);
                 await sendTg(order.user_chat_id, `💳 <b>Оплата прошла успешно!</b>\n\n💎 <b>${order.amount_uc} UC</b> будут выданы автоматически в течение 2-5 минут на UID: <code>${order.uid_player}</code>\n\nЕсли возникнут вопросы, пишите в поддержку.`);
@@ -1394,13 +1395,13 @@ app.post('/api/bot-webhook', async (req, res) => {
                     }
                     return;
                 }
-                
+
                 if (state.action === 'await_broadcast_message') {
                     const message = text.trim();
                     if (message.length > 0) {
                         adminStates.set(chatId, { action: 'await_broadcast_photo', message });
-                        await sendTg(chatId, `📷 <b>Добавить фото к рассылке?</b>\n\nОтправьте фото или нажмите "Продолжить без фото":`, { 
-                            inline_keyboard: [[{ text: "➡️ Продолжить без фото", callback_data: "broadcast_send_no_photo" }]] 
+                        await sendTg(chatId, `📷 <b>Добавить фото к рассылке?</b>\n\nОтправьте фото или нажмите "Продолжить без фото":`, {
+                            inline_keyboard: [[{ text: "➡️ Продолжить без фото", callback_data: "broadcast_send_no_photo" }]]
                         });
                     } else {
                         await sendTg(chatId, '❌ Сообщение не может быть пустым. Введите текст сообщения:');
@@ -1413,38 +1414,53 @@ app.post('/api/bot-webhook', async (req, res) => {
                         await sendTg(chatId, '❌ Введите сумму вывода в USDT');
                         return;
                     }
+                    const summary = await getChildTreasurySummary(supabase)
+                    if (amount > summary.balanceUsdt) {
+                        await sendTg(chatId, `❌ Недостаточно средств. Доступно: ${formatUsdt(summary.balanceUsdt)}`);
+                        return
+                    }
                     adminStates.set(chatId, { action: 'await_withdraw_payout', withdrawAmount: amount });
+                    const keyboard = {
+                        inline_keyboard: [
+                            [{ text: '🟡 Binance', callback_data: 'platform_binance' }],
+                            [{ text: '🔵 Bybit', callback_data: 'platform_bybit' }],
+                            [{ text: '❌ Отмена', callback_data: 'adm_back' }]
+                        ]
+                    };
                     await sendTg(
                         chatId,
-                        `Введите реквизиты для вывода <b>${formatUsdt(amount)}</b>\n` +
-                            `(например: Binance UID 123456789):`,
-                        { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
+                        `💰 Сумма: ${formatUsdt(amount)}\n\nВыберите площадку для вывода:`,
+                        keyboard
                     );
                     return;
+
                 }
                 if (state.action === 'await_steam_markup') {
-    const val = parseFloat(text.trim());
-    if (!isNaN(val)) {
-        // Делим на 100, чтобы в базе хранить 0.15 вместо 15
-        const decimalMarkup = val / 100;
-        const { error } = await supabase.from('settings').update({ steam_fee_percent: decimalMarkup }).eq('id', 1);
-        await sendTg(chatId, error ? `❌ Ошибка` : `✅ Наценка Steam установлена: ${val}%`, getAdminMainKeyboard());
-    } else {
-        await sendTg(chatId, '❌ Введите число');
-    }
-    adminStates.delete(chatId);
-    return;
-}
+                    const val = parseFloat(text.trim());
+                    if (!isNaN(val)) {
+                        // Делим на 100, чтобы в базе хранить 0.15 вместо 15
+                        const decimalMarkup = val / 100;
+                        const { error } = await supabase.from('settings').update({ steam_fee_percent: decimalMarkup }).eq('id', 1);
+                        await sendTg(chatId, error ? `❌ Ошибка` : `✅ Наценка Steam установлена: ${val}%`, getAdminMainKeyboard());
+                    } else {
+                        await sendTg(chatId, '❌ Введите число');
+                    }
+                    adminStates.delete(chatId);
+                    return;
+                }
 
                 if (state.action === 'await_withdraw_payout') {
                     const payoutDetails = text.trim();
                     if (!payoutDetails) {
-                        await sendTg(chatId, '❌ Введите реквизиты (Binance UID и т.д.)');
+                        await sendTg(chatId, '❌ Введите реквизиты ( адрес кошелька )');
                         return;
                     }
+                    const amount = state.withdrawAmount!;
+                    const platform = state.platform!;
                     const result = await createWithdrawalRequest(supabase, {
                         amountUsdt: state.withdrawAmount!,
                         payoutDetails,
+                        platform: platform,
                         adminChatId: chatId,
                     });
                     adminStates.delete(chatId);
@@ -1454,8 +1470,9 @@ app.post('/api/bot-webhook', async (req, res) => {
                         await sendTg(
                             chatId,
                             `✅ <b>Заявка #${result.request!.id} отправлена</b>\n\n` +
-                                `Сумма: ${formatUsdt(state.withdrawAmount!)}\n` +
-                                `Ожидайте подтверждения в главном боте.`,
+                            `Сумма: ${formatUsdt(state.withdrawAmount!)}\n` +
+                            `Площадка: ${platform === 'binance' ? 'Binance' : 'Bybit'}\n` +
+                            `Ожидайте подтверждения в главном боте.`,
                             getAdminMainKeyboard()
                         );
                     }
@@ -1466,7 +1483,7 @@ app.post('/api/bot-webhook', async (req, res) => {
             // Обработка команд для админа (текстовые команды сохранены для совместимости)
             if (text === '/start') {
                 console.log(`[START] Processing /start for admin ${chatId}`);
-                
+
                 const welcomeMessage = `🎮 <b>Привет, Админ!</b>\n\n` +
                     `Добро пожаловать в <b>UC Магазин</b>! 🛒\n\n` +
                     `Здесь вы можете купить:\n` +
@@ -1476,7 +1493,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                     `🎫 <b>Билеты</b> для дома\n` +
                     `🎮 <b>Prime Gaming</b> подписки\n\n` +
                     `Используйте /admin для панели управления:`;
-                
+
                 const keyboard = {
                     inline_keyboard: [[
                         { text: "Открыть магазин", icon_custom_emoji_id: "5242557396416500126", style: "danger", web_app: { url: `${process.env.CLIENT_URL || 'https://rakutapubgtop-up.store'}` } }
@@ -1484,7 +1501,7 @@ app.post('/api/bot-webhook', async (req, res) => {
                         { text: "🔧 Админ панель", callback_data: "admin_panel" }
                     ]]
                 };
-                
+
                 // Отправляем текст, не фото — чтобы кнопка «Админ панель» редактировала сообщение (editMessageText не работает с фото)
                 await sendTg(chatId, welcomeMessage, keyboard);
                 return; // Выходим, чтобы не обрабатывать как админские команды
@@ -1711,105 +1728,105 @@ app.post('/api/bot-webhook', async (req, res) => {
             // Обработка команд для обычных пользователей
             if (text === '/start') {
                 console.log(`[START] Processing /start for regular user ${chatId}`);
-                
+
                 const welcomeMessage = `Добро пожаловать в наш магазин 👋\n\nВоспользуйся кнопкой ниже для осуществления покупки 🛍️`;
-                
+
                 const keyboard = {
                     inline_keyboard: [[
                         { text: "Открыть магазин", icon_custom_emoji_id: "5242557396416500126", style: "danger", web_app: { url: `${process.env.CLIENT_URL || 'https://ucmagaz.web.app'}` } }
                     ]]
                 };
-                
+
                 await sendTg(chatId, welcomeMessage, keyboard);
                 return;
             }
 
             // Ограничение админ-команд для юзеров
-        if (['курс', 'маржа', 'код', 'освободить', 'price_usd', 'pp_markup', 'pp_usd', 'ticket_usd', 'ticket_markup', 'prime_markup', 'prime_plus_markup', '/admin', '/admin_manage'].some(cmd => text.toLowerCase().startsWith(cmd))) {
-            await sendTg(chatId, "доступно только администратору");
+            if (['курс', 'маржа', 'код', 'освободить', 'price_usd', 'pp_markup', 'pp_usd', 'ticket_usd', 'ticket_markup', 'prime_markup', 'prime_plus_markup', '/admin', '/admin_manage'].some(cmd => text.toLowerCase().startsWith(cmd))) {
+                await sendTg(chatId, "доступно только администратору");
+            }
         }
     }
-}
 
-// Обработка фото скинов
-if (message && message.photo) {
-    const currentChatId = message.chat.id.toString();
-    if (ADMIN_CHAT_ID.includes(currentChatId)) {
-        const caption = message.caption ? message.caption.trim() : '';
-        
-        // Обработка фото для рассылки и временного скина
-        const state = adminStates.get(currentChatId);
-        if (state && state.action === 'await_broadcast_photo') {
-            adminStates.delete(currentChatId);
-            try {
-                const fileId = message.photo[message.photo.length - 1].file_id;
-                if (state.message) {
-                    await sendBroadcast(currentChatId, state.message, fileId);
+    // Обработка фото скинов
+    if (message && message.photo) {
+        const currentChatId = message.chat.id.toString();
+        if (ADMIN_CHAT_ID.includes(currentChatId)) {
+            const caption = message.caption ? message.caption.trim() : '';
+
+            // Обработка фото для рассылки и временного скина
+            const state = adminStates.get(currentChatId);
+            if (state && state.action === 'await_broadcast_photo') {
+                adminStates.delete(currentChatId);
+                try {
+                    const fileId = message.photo[message.photo.length - 1].file_id;
+                    if (state.message) {
+                        await sendBroadcast(currentChatId, state.message, fileId);
+                    }
+                } catch (error: any) {
+                    await sendTg(currentChatId, `❌ Ошибка обработки фото: ${error.message}`, getAdminMainKeyboard());
                 }
-            } catch (error: any) {
-                await sendTg(currentChatId, `❌ Ошибка обработки фото: ${error.message}`, getAdminMainKeyboard());
             }
-        }
-        
-        if (state && state.action === 'await_temp_skin_photo') {
-            adminStates.delete(currentChatId);
-            try {
-                console.log(`[TEMP SKIN UPLOAD] Starting upload for '${state.title}' price ${state.price}`);
-                const fileId = message.photo[message.photo.length - 1].file_id;
-                const fileResponse = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
-                const filePath = fileResponse.data.result.file_path;
-                const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-                const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-                const buffer = Buffer.from(imageResponse.data);
-                const fileName = `temp_skin_${Date.now()}.jpg`;
-                
-                const { error: uploadError } = await supabase.storage.from('skins').upload(fileName, buffer, { contentType: 'image/jpeg' });
-                if (uploadError) throw uploadError;
-                
-                const { data: urlData } = supabase.storage.from('skins').getPublicUrl(fileName);
-                
-                const { error: insertError } = await supabase.from('skins_products').insert([{
-                    title: state.title, 
-                    price_rub: state.price, 
-                    image_url: urlData.publicUrl,
-                    is_temporary: true
-                }]);
-                
-                if (insertError) throw insertError;
-                
-                await sendTg(currentChatId, `✅ Временный скин "${state.title}" добавлен!`, getAdminMainKeyboard());
-            } catch (e: any) {
-                console.error('[TEMP SKIN UPLOAD] Error:', e);
-                await sendTg(currentChatId, '❌ Ошибка при добавлении временного скина', getAdminMainKeyboard());
+
+            if (state && state.action === 'await_temp_skin_photo') {
+                adminStates.delete(currentChatId);
+                try {
+                    console.log(`[TEMP SKIN UPLOAD] Starting upload for '${state.title}' price ${state.price}`);
+                    const fileId = message.photo[message.photo.length - 1].file_id;
+                    const fileResponse = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
+                    const filePath = fileResponse.data.result.file_path;
+                    const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+                    const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+                    const buffer = Buffer.from(imageResponse.data);
+                    const fileName = `temp_skin_${Date.now()}.jpg`;
+
+                    const { error: uploadError } = await supabase.storage.from('skins').upload(fileName, buffer, { contentType: 'image/jpeg' });
+                    if (uploadError) throw uploadError;
+
+                    const { data: urlData } = supabase.storage.from('skins').getPublicUrl(fileName);
+
+                    const { error: insertError } = await supabase.from('skins_products').insert([{
+                        title: state.title,
+                        price_rub: state.price,
+                        image_url: urlData.publicUrl,
+                        is_temporary: true
+                    }]);
+
+                    if (insertError) throw insertError;
+
+                    await sendTg(currentChatId, `✅ Временный скин "${state.title}" добавлен!`, getAdminMainKeyboard());
+                } catch (e: any) {
+                    console.error('[TEMP SKIN UPLOAD] Error:', e);
+                    await sendTg(currentChatId, '❌ Ошибка при добавлении временного скина', getAdminMainKeyboard());
+                }
+                return;
             }
-            return;
-        }
-        
-        // Обработка обычного скина
-        if (caption && caption.toLowerCase().startsWith('скин ')) {
-            const parts = caption.split(' ');
-            if (parts.length >= 3) {
-                const title = parts.slice(1, -1).join(' ');
-                const price = parseInt(parts[parts.length - 1]);
-                if (!isNaN(price)) {
-                    try {
-                        console.log(`[SKIN UPLOAD] Starting upload for '${title}' price ${price}`);
-                        const fileId = message.photo[message.photo.length - 1].file_id;
-                        console.log(`[SKIN UPLOAD] File ID: ${fileId}`);
-                        const fileResponse = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
-                        const filePath = fileResponse.data.result.file_path;
-                        console.log(`[SKIN UPLOAD] File path: ${filePath}`);
-                        const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-                        console.log(`[SKIN UPLOAD] Download URL: ${downloadUrl}`);
-                        const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-                        const buffer = Buffer.from(imageResponse.data);
-                        console.log(`[SKIN UPLOAD] Buffer size: ${buffer.length} bytes`);
-                        const fileName = `skin_${Date.now()}.jpg`;
-                        console.log(`[SKIN UPLOAD] Uploading to Supabase: ${fileName}`);
-                        const { error: uploadError } = await supabase.storage.from('skins').upload(fileName, buffer, { contentType: 'image/jpeg' });
-                        if (uploadError) {
-                            console.error('[SKIN UPLOAD] Upload error:', uploadError);
-                            throw uploadError;
+
+            // Обработка обычного скина
+            if (caption && caption.toLowerCase().startsWith('скин ')) {
+                const parts = caption.split(' ');
+                if (parts.length >= 3) {
+                    const title = parts.slice(1, -1).join(' ');
+                    const price = parseInt(parts[parts.length - 1]);
+                    if (!isNaN(price)) {
+                        try {
+                            console.log(`[SKIN UPLOAD] Starting upload for '${title}' price ${price}`);
+                            const fileId = message.photo[message.photo.length - 1].file_id;
+                            console.log(`[SKIN UPLOAD] File ID: ${fileId}`);
+                            const fileResponse = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
+                            const filePath = fileResponse.data.result.file_path;
+                            console.log(`[SKIN UPLOAD] File path: ${filePath}`);
+                            const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+                            console.log(`[SKIN UPLOAD] Download URL: ${downloadUrl}`);
+                            const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+                            const buffer = Buffer.from(imageResponse.data);
+                            console.log(`[SKIN UPLOAD] Buffer size: ${buffer.length} bytes`);
+                            const fileName = `skin_${Date.now()}.jpg`;
+                            console.log(`[SKIN UPLOAD] Uploading to Supabase: ${fileName}`);
+                            const { error: uploadError } = await supabase.storage.from('skins').upload(fileName, buffer, { contentType: 'image/jpeg' });
+                            if (uploadError) {
+                                console.error('[SKIN UPLOAD] Upload error:', uploadError);
+                                throw uploadError;
                                 console.error('[SKIN UPLOAD] Upload error:', uploadError);
                                 throw uploadError;
                             }
@@ -2062,11 +2079,11 @@ if (message && message.photo) {
         }
 
         if (data === 'adm_steam_markup') {
-    adminStates.set(currentChatId, { action: 'await_steam_markup' });
-    await editTg(currentChatId, msgId, `🎮 Введите наценку для Steam в процентах (например, 15):`, { 
-        inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_back" }]] 
-    });
-}
+            adminStates.set(currentChatId, { action: 'await_steam_markup' });
+            await editTg(currentChatId, msgId, `🎮 Введите наценку для Steam в процентах (например, 15):`, {
+                inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_back" }]]
+            });
+        }
 
         if (data === 'adm_prime') {
             const { data: s } = await supabase.from('settings').select('*').single();
@@ -2309,25 +2326,25 @@ if (message && message.photo) {
                 .from('broadcast_users')
                 .select('chat_id')
                 .eq('is_active', true);
-            
+
             const users = allUsers?.map(user => user.chat_id) || [];
-            
+
             const text = `📢 <b>Рассылки</b>\n\n👥 Всего пользователей: ${users.length}`;
-            
+
             const keyboard = {
                 inline_keyboard: [
                     [{ text: "📝 Создать рассылку", callback_data: "broadcast_create" }],
                     [{ text: "🔙 Назад", callback_data: "adm_back" }]
                 ]
             };
-            
+
             await editTg(currentChatId, msgId, text, keyboard);
         }
 
         if (data === 'broadcast_create') {
             adminStates.set(currentChatId, { action: 'await_broadcast_message' });
-            await editTg(currentChatId, msgId, `📝 <b>Создание рассылки</b>\n\nВведите текст сообщения для всем пользователям:`, { 
-                inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_broadcasts" }]] 
+            await editTg(currentChatId, msgId, `📝 <b>Создание рассылки</b>\n\nВведите текст сообщения для всем пользователям:`, {
+                inline_keyboard: [[{ text: "❌ Отмена", callback_data: "adm_broadcasts" }]]
             });
         }
 
@@ -2343,7 +2360,7 @@ if (message && message.photo) {
             const { error } = await supabase
                 .from('midas_accounts')
                 .update({ is_active: true });
-            
+
             const text = error ? `❌ Ошибка активации: ${error.message}` : `✅ Все аккаунты Midasbuy активированы!`;
             await answerCallback(callback_query.id, text);
         }
@@ -2357,6 +2374,28 @@ if (message && message.photo) {
                 formatChildTreasuryMessage(summary) + '\n\n💸 Введите сумму вывода в USDT:',
                 { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
             );
+        }
+        if (data === 'platform_binance' || data === 'platform_bybit') {
+            const state = adminStates.get(currentChatId);
+            if (!state || state.action !== 'await_withdraw_platform') {
+                await sendTg(currentChatId, '❌ Сначала введите сумму');
+                return;
+            }
+            const platform = data === 'platform_binance' ? 'binance' : 'bybit';
+            adminStates.set(currentChatId, {
+                action: 'await_withdraw_payout',
+                withdrawAmount: state.withdrawAmount,
+                platform: platform,
+            });
+            const platformLabel = platform === 'binance' ? 'Binance' : 'Bybit';
+            await editTg(
+                currentChatId,
+                msgId,
+                `💰 Сумма: ${formatUsdt(state.withdrawAmount!)}\n📱 Площадка: <b>${platformLabel}</b>\n\n` +
+                `Введите реквизиты для вывода (например, Binance UID или адрес кошелька):`,
+                { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'adm_back' }]] }
+            );
+            return;
         }
 
     }
