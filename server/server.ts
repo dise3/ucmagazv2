@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 console.log('dotenv loaded');
 import { v4 as uuidv4 } from 'uuid';
-
+import { sendGiftCodeEmail } from './emailService';
 import express from 'express';
 import { activateSingleCode } from './activator.ts';
 import axios from 'axios';
@@ -973,11 +973,29 @@ app.post('/api/payment-callback', async (req, res) => {
                     if (payResult.status === 'completed') {
                         if (order.order_type === 'ps_gift' && payResult.pins && payResult.pins.length > 0) {
                             const pinCode = payResult.pins[0];
-                            await sendTg(order.user_chat_id,
-                                `🎁 <b>Ваш код PlayStation готов!</b>\n\n` +
-                                `Код: <code>${pinCode}</code>\n\n` +
-                                `<i>Активируйте его в настройках вашего аккаунта PS Store.</i>`
-                            );
+                            const hasTelegram = order.user_chat_id && order.user_chat_id !== 0;
+                            const userEmail = order.email;
+
+                            if (hasTelegram) {
+                                await sendTg(order.user_chat_id,
+                                    `🎁 <b>Ваш код PlayStation готов!</b>\n\n` +
+                                    `Код: <code>${pinCode}</code>\n\n` +
+                                    `<i>Активируйте его в настройках вашего аккаунта PS Store.</i>`
+                                );
+                            } else {
+                                if (userEmail) {
+                                    try {
+                                        await sendGiftCodeEmail(userEmail, pinCode, order.id);
+                                        console.log(`✅ Код для заказа #${order.id} отправлен на почту ${userEmail}`);
+                                        await sendTg(ADMIN_CHAT_ID, `📧 Код для заказа #${order.id} отправлен на почту ${userEmail}`);
+                                    } catch (emailError) {
+                                        console.error('❌ Ошибка отправки письма:', emailError);
+                                        await sendTg(ADMIN_CHAT_ID, `⚠️ Ошибка отправки письма для заказа #${order.id}. Код: ${pinCode}`);
+                                    }
+                                } else {
+                                    await sendTg(ADMIN_CHAT_ID, `❌ Нет email для заказа #${order.id}. Код: ${pinCode}`);
+                                }
+                            }
                         } else {
                             await sendTg(order.user_chat_id,
                                 `✅ <b>Steam успешно пополнен!</b>\n\n` +
@@ -987,7 +1005,11 @@ app.post('/api/payment-callback', async (req, res) => {
                         }
 
                         await supabase.from('orders').update({ status: 'completed' }).eq('id', order.id);
-                        await sendTg(ADMIN_CHAT_ID, `✅ Заказ #${order.id} успешно выдан через NS API.`);
+                        if (order.order_type === 'ps_gift') {
+                            await sendTg(ADMIN_CHAT_ID, `✅ Заказ #${order.id} PlayStation успешно выполнен. Код выдан пользователю.`);
+                        } else {
+                            await sendTg(ADMIN_CHAT_ID, `✅ Заказ #${order.id} Steam успешно выполнен. Пополнение прошло на ${order.amount_uc}.`);
+                        }
 
                     } else if (payResult.status === 'in_progress') {
                         await sendTg(order.user_chat_id, `⏳ Ваш заказ находится в обработке на стороне провайдера. Мы пришлем уведомление сразу после активации.`);
